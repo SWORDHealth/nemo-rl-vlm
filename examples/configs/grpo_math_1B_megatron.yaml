@@ -102,7 +102,7 @@ policy:
     apply_rope_fusion: True
 
     peft:
-      enabled: true
+      enabled: false
       target_modules: []
       exclude_modules: []
       dim: 8
@@ -112,7 +112,7 @@ policy:
       lora_A_init_method: "xavier"
       lora_B_init_method: "zero"
       a2a_experimental: false
-      lora_dtype: None
+      lora_dtype: null
     
     optimizer:
       optimizer: "adam"
