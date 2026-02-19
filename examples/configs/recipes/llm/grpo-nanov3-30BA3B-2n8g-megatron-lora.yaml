@@ -32,7 +32,7 @@ logger:
   tensorboard_enabled: true
   wandb:
     project: nemo-rl
-    name: grpo-nanov3-30BA3B-2n8g-fsdp2-lora
+    name: grpo-nanov3-30BA3B-2n8g-megatron-lora
 cluster:
   gpus_per_node: 8
   num_nodes: 2
