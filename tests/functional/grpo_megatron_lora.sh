@@ -39,7 +39,9 @@ uv run coverage run -a --data-file=$PROJECT_ROOT/tests/.coverage --source=$PROJE
     logger.log_dir=$LOG_DIR \
     logger.wandb_enabled=false \
     logger.monitor_gpus=true \
-    checkpointing.enabled=false \
+    checkpointing.enabled=true \
+    checkpointing.save_period=3 \
+    checkpointing.checkpoint_dir=/tmp/grpo_megatron_lora_checkpoints \
     $@ \
     2>&1 | tee $RUN_LOG
 

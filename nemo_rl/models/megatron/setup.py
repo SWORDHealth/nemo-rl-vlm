@@ -704,20 +704,25 @@ def setup_model_and_optimizer(
 
     if use_peft:
         peft_cfg = policy_cfg["megatron_cfg"].get("peft", {})
+        if "dim" not in peft_cfg or peft_cfg["dim"] is None:
+            raise ValueError("If megtatron_cfg.peft.enabled is True, dim must be set in peft_cfg")
+        if "alpha" not in peft_cfg or peft_cfg["alpha"] is None:
+            raise ValueError("If megtatron_cfg.peft.enabled is True, alpha must be set in peft_cfg")
         peft = LoRA(
-            target_modules=peft_cfg["target_modules"],
-            exclude_modules=peft_cfg["exclude_modules"],
+            target_modules=peft_cfg.get("target_modules", []),
+            exclude_modules=peft_cfg.get("exclude_modules", []),
             dim=peft_cfg["dim"],
             alpha=peft_cfg["alpha"],
-            dropout=peft_cfg["dropout"],
-            dropout_position=peft_cfg["dropout_position"],
-            lora_A_init_method=peft_cfg["lora_A_init_method"],
-            lora_B_init_method=peft_cfg["lora_B_init_method"],
-            a2a_experimental=peft_cfg["a2a_experimental"],
-            lora_dtype=peft_cfg["lora_dtype"],
+            dropout=peft_cfg.get("dropout", 0.0),
+            dropout_position=peft_cfg.get("dropout_position", "post"),
+            lora_A_init_method=peft_cfg.get("lora_A_init_method", "xavier"),
+            lora_B_init_method=peft_cfg.get("lora_B_init_method", "zero"),
+            a2a_experimental=peft_cfg.get("a2a_experimental", False),
+            lora_dtype=peft_cfg.get("lora_dtype", None),
         )
     else:
         peft = None
+
     megatron_cfg.peft = peft
 
     if megatron_cfg.peft is not None:
@@ -873,24 +878,28 @@ def setup_reference_model_state(
     
     if use_peft:
         peft_cfg = config["megatron_cfg"].get("peft", {})
+        if "dim" not in peft_cfg or peft_cfg["dim"] is None:
+            raise ValueError("If megtatron_cfg.peft.enabled is True, dim must be set in peft_cfg")
+        if "alpha" not in peft_cfg or peft_cfg["alpha"] is None:
+            raise ValueError("If megtatron_cfg.peft.enabled is True, alpha must be set in peft_cfg")
         peft = LoRA(
-            target_modules=peft_cfg["target_modules"],
-            exclude_modules=peft_cfg["exclude_modules"],
+            target_modules=peft_cfg.get("target_modules", []),
+            exclude_modules=peft_cfg.get("exclude_modules", []),
             dim=peft_cfg["dim"],
             alpha=peft_cfg["alpha"],
-            dropout=peft_cfg["dropout"],
-            dropout_position=peft_cfg["dropout_position"],
-            lora_A_init_method=peft_cfg["lora_A_init_method"],
-            lora_B_init_method=peft_cfg["lora_B_init_method"],
-            a2a_experimental=peft_cfg["a2a_experimental"],
-            lora_dtype=peft_cfg["lora_dtype"],
+            dropout=peft_cfg.get("dropout", 0.0),
+            dropout_position=peft_cfg.get("dropout_position", "post"),
+            lora_A_init_method="zero",
+            lora_B_init_method="zero",
+            a2a_experimental=peft_cfg.get("a2a_experimental", False),
+            lora_dtype=peft_cfg.get("lora_dtype", None),
         )
     else:
         peft = None
 
     ref_megatron_cfg.peft = peft
 
-    if ref_megatron_cfg is not None:
+    if ref_megatron_cfg.peft is not None:
         pre_peft_hook = _create_peft_pre_wrap_hook(ref_megatron_cfg, ref_state)
         ref_megatron_cfg.model.register_pre_wrap_hook(pre_peft_hook)
 

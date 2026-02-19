@@ -1,7 +1,4 @@
 #!/bin/bash
-# clean up checkpoint directory on exit
-trap "rm -rf /tmp/grpo_megatron_lora_checkpoints" EXIT
-
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
 PROJECT_ROOT=$(realpath $SCRIPT_DIR/../..)
 # Mark the current repo as safe, since wandb fetches metadata about the repo
