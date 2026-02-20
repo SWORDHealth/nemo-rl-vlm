@@ -925,14 +925,13 @@ def setup_reference_model_state(
         and checkpoint_exists(ref_checkpoint_config.pretrained_checkpoint)
     )
 
-    if should_load_checkpoint:
+    if should_load_checkpoint and use_peft:
         # The finetune toggle is explicitly set to True in order to avoid loading optimizer and RNG states
         # This is switched off here in order to load these states from the checkpoint
         ref_megatron_cfg.checkpoint.finetune = False
 
     print("Loading the Reference Model")
-    reference_state_dict = {}
-
+    
     if should_load_checkpoint:
         load_checkpoint(
             ref_state,
@@ -944,6 +943,8 @@ def setup_reference_model_state(
         )
     else:
         print("Reference model not loaded")
+
+    reference_state_dict = {}
 
     if should_load_checkpoint or use_peft:
         reference_model = reference_model[0]
