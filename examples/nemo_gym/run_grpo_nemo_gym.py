@@ -23,7 +23,6 @@ wandb.util.VALUE_BYTES_LIMIT = 10_000_000
 
 import ray
 from omegaconf import OmegaConf
-from wandb import Table
 
 from nemo_rl.algorithms.grpo import (
     ColocatablePolicyInterface,
@@ -54,6 +53,7 @@ from nemo_rl.utils.config import (
     register_omegaconf_resolvers,
 )
 from nemo_rl.utils.logger import get_next_experiment_dir
+from wandb import Table
 
 
 def parse_args() -> tuple[argparse.Namespace, list[str]]:

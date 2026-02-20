@@ -705,9 +705,13 @@ def setup_model_and_optimizer(
     if use_peft:
         peft_cfg = policy_cfg["megatron_cfg"].get("peft", {})
         if "dim" not in peft_cfg or peft_cfg["dim"] is None:
-            raise ValueError("If megtatron_cfg.peft.enabled is True, dim must be set in peft_cfg")
+            raise ValueError(
+                "If megtatron_cfg.peft.enabled is True, dim must be set in peft_cfg"
+            )
         if "alpha" not in peft_cfg or peft_cfg["alpha"] is None:
-            raise ValueError("If megtatron_cfg.peft.enabled is True, alpha must be set in peft_cfg")
+            raise ValueError(
+                "If megtatron_cfg.peft.enabled is True, alpha must be set in peft_cfg"
+            )
         peft = LoRA(
             target_modules=peft_cfg.get("target_modules", []),
             exclude_modules=peft_cfg.get("exclude_modules", []),
@@ -875,13 +879,17 @@ def setup_reference_model_state(
 
     ref_pre_wrap_hooks = []
     use_peft = config["megatron_cfg"].get("peft", {}).get("enabled", False)
-    
+
     if use_peft:
         peft_cfg = config["megatron_cfg"].get("peft", {})
         if "dim" not in peft_cfg or peft_cfg["dim"] is None:
-            raise ValueError("If megtatron_cfg.peft.enabled is True, dim must be set in peft_cfg")
+            raise ValueError(
+                "If megtatron_cfg.peft.enabled is True, dim must be set in peft_cfg"
+            )
         if "alpha" not in peft_cfg or peft_cfg["alpha"] is None:
-            raise ValueError("If megtatron_cfg.peft.enabled is True, alpha must be set in peft_cfg")
+            raise ValueError(
+                "If megtatron_cfg.peft.enabled is True, alpha must be set in peft_cfg"
+            )
         peft = LoRA(
             target_modules=peft_cfg.get("target_modules", []),
             exclude_modules=peft_cfg.get("exclude_modules", []),
@@ -931,7 +939,7 @@ def setup_reference_model_state(
         ref_megatron_cfg.checkpoint.finetune = False
 
     print("Loading the Reference Model")
-    
+
     if should_load_checkpoint:
         load_checkpoint(
             ref_state,
