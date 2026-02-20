@@ -920,19 +920,15 @@ def setup_reference_model_state(
         pg_collection=ProcessGroupCollection.use_mpu_process_groups(),
     )
 
-    if use_peft:
-        should_load_checkpoint = ref_checkpoint_config.load is not None and checkpoint_exists(
-            ref_checkpoint_config.load
-        )
-        if should_load_checkpoint:
-            # The finetune toggle is explicitly set to True in order to avoid loading optimizer and RNG states
-            # This is switched off here in order to load these states from the checkpoint
-            ref_megatron_cfg.checkpoint.finetune = False
-    else:
-        should_load_checkpoint = (
-            ref_checkpoint_config.pretrained_checkpoint is not None
-            and checkpoint_exists(ref_checkpoint_config.pretrained_checkpoint)
-        )
+    should_load_checkpoint = (
+        ref_checkpoint_config.pretrained_checkpoint is not None
+        and checkpoint_exists(ref_checkpoint_config.pretrained_checkpoint)
+    )
+
+    if should_load_checkpoint:
+        # The finetune toggle is explicitly set to True in order to avoid loading optimizer and RNG states
+        # This is switched off here in order to load these states from the checkpoint
+        ref_megatron_cfg.checkpoint.finetune = False
 
     print("Loading the Reference Model")
     reference_state_dict = {}
