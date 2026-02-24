@@ -24,6 +24,16 @@ cd $PROJECT_ROOT
 # Follow nemo-gym instructions here to get this data:
 # https://docs.nvidia.com/nemo/gym/0.1.0/tutorials/nemo-rl-grpo/setup.html#training-nemo-rl-grpo-setup
 cd 3rdparty/Gym-workspace/Gym
+
+# We need HF_TOKEN to download the data from huggingface
+if [[ ! -f env.yaml ]]; then
+    if [[ -z "${HF_TOKEN:-}" ]]; then
+        echo "[ERROR] HF_TOKEN is not set"
+        exit 1
+    fi
+    echo "hf_token: $HF_TOKEN" >> env.yaml
+fi
+
 config_paths="responses_api_models/vllm_model/configs/vllm_model_for_training.yaml,\
 resources_servers/workplace_assistant/configs/workplace_assistant.yaml"
 
