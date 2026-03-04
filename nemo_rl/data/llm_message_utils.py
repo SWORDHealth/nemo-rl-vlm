@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import re
 import warnings
 from typing import Any, Optional, Union, cast
 
@@ -440,6 +441,24 @@ def get_images_from_message(message: dict[str, Any]) -> list[Any]:
     return images
 
 
+def get_videos_from_message(message: dict[str, Any]) -> list[Any]:
+    """Get all videos from a message log item."""
+    # Handle None or missing content (e.g., assistant messages with only tool_calls)
+    if message.get("content") is None:
+        return []
+    # Handle string content (no videos)
+    if isinstance(message["content"], str):
+        return []
+    # iterate over the content list
+    videos = []
+    for item in message["content"]:
+        if item["type"] == "video":
+            videos.extend(list(item["video"])) if isinstance(
+                item["video"], (list, tuple)
+            ) else videos.append(item["video"])
+    return videos
+
+
 def get_formatted_message_log(
     message_log: LLMMessageLogType,
     tokenizer: TokenizerType,
@@ -538,9 +557,23 @@ def get_formatted_message_log(
         if tools is not None:
             template_kwargs["tools"] = tools
 
-        formatted_message: str = tokenizer.apply_chat_template(  # type: ignore
-            message_log_strs[: i + 1], **template_kwargs
-        )
+        # Handle system-only messages manually (Qwen3.5 template requires at least one user message)
+        messages_to_format = message_log_strs[: i + 1]
+        has_non_system = any(msg["role"] != "system" for msg in messages_to_format)
+
+        if not has_non_system:
+            # Only system messages so far - format them manually to match Qwen3.5 format
+            # Format: <|im_start|>system\n{content}<|im_end|>\n
+            formatted_parts = []
+            for msg in messages_to_format:
+                if msg["role"] == "system":
+                    content = msg["content"] if isinstance(msg["content"], str) else str(msg["content"])
+                    formatted_parts.append(f"<|im_start|>system\n{content}<|im_end|>\n")
+            formatted_message = "".join(formatted_parts)
+        else:
+            formatted_message: str = tokenizer.apply_chat_template(  # type: ignore
+                messages_to_format, **template_kwargs
+            )
 
         ## get the length of the previous message, excluding the eos token (if present)
         prev_message_len_no_eos: int = get_first_index_that_differs(
@@ -551,6 +584,7 @@ def get_formatted_message_log(
         ## pull out the chunk corresponding to the current message
         message_chunk = formatted_message[prev_message_len_no_eos:]
 
+        """
         # Debug: Print each message turn separately (only once for the first sample)
         if not hasattr(get_formatted_message_log, "_debug_printed"):
             if i == 0:
@@ -572,9 +606,17 @@ def get_formatted_message_log(
                 get_formatted_message_log._debug_printed = True
                 print("\n" + "=" * 80)
                 print("DEBUG: Complete formatted conversation:")
-                print("-" * 80)
+                print("-" * 40)
                 print(formatted_message)
                 print("=" * 80 + "\n")
+        """
+
+        # Store the original content to preserve reasoning tokens if they exist
+        has_original_reasoning_tokens = "<think>" in message.get("content", "")
+        # Handle reasoning tokens: only preserve them if they were in the original message
+        if not has_original_reasoning_tokens:
+            # Remove any <think> </think> tags that the tokenizer may have added
+            message_chunk = message_chunk.replace("\n<think>\n\n</think>\n", "")
 
         if i == 0:
             if add_bos_token:
@@ -605,26 +647,59 @@ def get_formatted_message_log(
                 elif not stripped_message_chunk.endswith(tokenizer.eos_token):
                     message_chunk += tokenizer.eos_token
 
-        # get images too (extend this for other modalities)
+        # get images and videos (extend this for other modalities)
         images_cur_message = get_images_from_message(message)
+        videos_cur_message = get_videos_from_message(message)
 
         new_message = message.copy()
-        # extend this if statement to check for all(len(modality)) == 0 when adding other modalities
-        if len(images_cur_message) == 0:
+        # check if we have any multimodal content
+        if len(images_cur_message) == 0 and len(videos_cur_message) == 0:
             new_message["token_ids"] = tokenizer(
                 text=message_chunk, return_tensors="pt", add_special_tokens=False
             )["input_ids"][0]
         else:
-            # extend the else statement to add other modalities (in this case, tokenizer will be a processor)
-            processed_chunk = tokenizer(
-                text=[message_chunk],
-                images=images_cur_message,
-                return_tensors="pt",
-                add_special_tokens=False,
-            )
+            if len(videos_cur_message) > 0 and hasattr(tokenizer, 'apply_chat_template'):
+                video_metadata_from_content = None
+                for item in message.get("content", []):
+                    if isinstance(item, dict) and item.get("type") == "video":
+                        video_metadata_from_content = item.get("video_metadata")
+                        if video_metadata_from_content is not None:
+                            break
+
+
+                # Build videos_kwargs with metadata
+                videos_kwargs_dict = {
+                    "do_sample_frames": False,
+                }
+                if video_metadata_from_content is not None:
+                    # Pass as list for proper batching by the video processor
+                    videos_kwargs_dict["video_metadata"] = [video_metadata_from_content]
+
+                processed_chunk = tokenizer.apply_chat_template(
+                    [message],
+                    tokenize=True,
+                    return_tensors="pt",
+                    add_special_tokens=False,
+                    return_dict=True,
+                    videos_kwargs=videos_kwargs_dict,
+                )
+            else:
+                # Fallback for images-only or processors without apply_chat_template
+                processor_kwargs = {
+                    "text": [message_chunk],
+                    "return_tensors": "pt",
+                    "add_special_tokens": False,
+                }
+                if len(images_cur_message) > 0:
+                    processor_kwargs["images"] = images_cur_message
+                if len(videos_cur_message) > 0:
+                    processor_kwargs["videos"] = videos_cur_message
+
+                processed_chunk = tokenizer(**processor_kwargs)
+
             new_message["token_ids"] = processed_chunk["input_ids"][0]
 
-            # add all vlm keys to the message
+            # add all vlm keys to the message (including video-related keys)
             for key in multimodal_keys:
                 if key in processed_chunk:
                     new_message[key] = PackedTensor(processed_chunk[key], dim_to_pack=0)

@@ -78,12 +78,26 @@ def setup_data(tokenizer: AutoTokenizer, data_config: DataConfig):
         data = load_response_dataset(cfg)
         data_list.append(data)
         # bind task_name to task_data_processors
-        data_processor = partial(
-            data.processor,
-            add_bos=data_config["add_bos"],
-            add_eos=data_config["add_eos"],
-            add_generation_prompt=data_config["add_generation_prompt"],
-        )
+        # For thrive-vlm, add datum_preprocessor to handle video data
+        if data.task_name == "thrive-vlm":
+            from nemo_rl.data.datasets.response_datasets.thrive_vlm import (
+                format_thrive_vlm_dataset,
+            )
+
+            data_processor = partial(
+                data.processor,
+                add_bos=data_config["add_bos"],
+                add_eos=data_config["add_eos"],
+                add_generation_prompt=data_config["add_generation_prompt"],
+                datum_preprocessor=partial(format_thrive_vlm_dataset, return_pil=True),
+            )
+        else:
+            data_processor = partial(
+                data.processor,
+                add_bos=data_config["add_bos"],
+                add_eos=data_config["add_eos"],
+                add_generation_prompt=data_config["add_generation_prompt"],
+            )
         task_data_processors[data.task_name] = (data.task_spec, data_processor)
 
     merged_data = concatenate_datasets([data.dataset for data in data_list])
@@ -95,6 +109,23 @@ def setup_data(tokenizer: AutoTokenizer, data_config: DataConfig):
         max_seq_length=data_config["max_input_seq_length"],
     )
     print(f"  ✓ Training dataset loaded with {len(dataset)} samples.")
+
+    """
+    # Debug: Print tokenized samples to verify video token counts
+    for i in dataset:
+        print('ooooooooooooo')
+        for j in range(len(i['message_log'])):
+            #print('-----content-----')
+            #print(i['message_log'][j]['content'])
+            #print('-----token_ids-----')
+            #print(i['message_log'][j]['token_ids'])
+            print('-----decoded tokens-----')
+            decoded = tokenizer.decode(i['message_log'][j]['token_ids'])
+            print(decoded)
+            num_video_tokens = decoded.count('<|video_pad|>')
+            print(f'  🎥 Video tokens: {num_video_tokens} / {len(i["message_log"][j]["token_ids"])} tokens in message {j}')
+        print('\n\n')
+    """
 
     # setup validation dataset
     val_task_data_processors = {}
@@ -120,12 +151,26 @@ def setup_data(tokenizer: AutoTokenizer, data_config: DataConfig):
             val_data = load_response_dataset(cfg)
             val_data_list.append(val_data.dataset)
             # bind task_name to task_data_processors
-            val_data_processor = partial(
-                val_data.processor,
-                add_bos=data_config["add_bos"],
-                add_eos=data_config["add_eos"],
-                add_generation_prompt=data_config["add_generation_prompt"],
-            )
+            # For thrive-vlm, add datum_preprocessor to handle video data
+            if val_data.task_name == "thrive-vlm":
+                from nemo_rl.data.datasets.response_datasets.thrive_vlm import (
+                    format_thrive_vlm_dataset,
+                )
+
+                val_data_processor = partial(
+                    val_data.processor,
+                    add_bos=data_config["add_bos"],
+                    add_eos=data_config["add_eos"],
+                    add_generation_prompt=data_config["add_generation_prompt"],
+                    datum_preprocessor=partial(format_thrive_vlm_dataset, return_pil=True),
+                )
+            else:
+                val_data_processor = partial(
+                    val_data.processor,
+                    add_bos=data_config["add_bos"],
+                    add_eos=data_config["add_eos"],
+                    add_generation_prompt=data_config["add_generation_prompt"],
+                )
             val_task_data_processors[val_data.task_name] = (
                 val_data.task_spec,
                 val_data_processor,

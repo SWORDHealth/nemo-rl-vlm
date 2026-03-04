@@ -16,7 +16,7 @@
 
 import json
 import logging
-from typing import Any, Dict, cast
+from typing import Any, Callable, Dict, Optional, cast
 
 import torch
 from transformers import AutoProcessor, PreTrainedTokenizerBase
@@ -146,10 +146,13 @@ def sft_processor(
     add_bos: bool = True,
     add_eos: bool = True,
     add_generation_prompt: bool = False,
+    datum_preprocessor: Optional[Callable] = None,
 ) -> DatumSpec:
     """Process a datum dictionary for SFT training."""
     # optional preprocessor
-    if datum_dict["task_name"] == "clevr-cogent":
+    if datum_preprocessor is not None:
+        datum_dict = datum_preprocessor(datum_dict)
+    elif datum_dict["task_name"] == "clevr-cogent":
         from nemo_rl.data.datasets.response_datasets.clevr import (
             format_clevr_cogent_dataset,
         )
@@ -444,6 +447,9 @@ def vlm_hf_data_processor(
     processor: AutoProcessor,
     max_seq_length: int,
     idx: int,
+    add_bos: bool = True,
+    add_eos: bool = True,
+    add_generation_prompt: bool = False,
 ) -> DatumSpec:
     """Process a datum dictionary (directly loaded from response_datasets/<dataset_name>.py) into a DatumSpec for the VLM Environment."""
     from nemo_rl.data.datasets.response_datasets.clevr import (
@@ -467,6 +473,9 @@ def vlm_hf_data_processor(
         datum_dict = format_refcoco_dataset(datum_dict)
     elif datum_dict["task_name"] == "geometry3k":
         datum_dict = format_geometry3k_dataset(datum_dict)
+    elif datum_dict["task_name"] == "thrive-vlm":
+        # Thrive VLM data is already formatted by format_thrive_vlm_dataset
+        pass
     else:
         raise ValueError(f"No data processor for task {datum_dict['task_name']}")
 
@@ -500,7 +509,18 @@ def vlm_hf_data_processor(
                 )
     else:
         # conversation consists of a text-only message
-        user_message["content"] = task_data_spec.prompt.format(problem)
+        # Always format as a list for consistency with apply_chat_template
+        text_content = (
+            task_data_spec.prompt.format(problem)
+            if task_data_spec.prompt
+            else problem
+        )
+        user_message["content"].append(
+            {
+                "type": "text",
+                "text": text_content,
+            }
+        )
 
     images = [resolve_to_image(image) for image in images]
 
@@ -516,14 +536,14 @@ def vlm_hf_data_processor(
     string_formatted_dialog = processor.apply_chat_template(
         [user_message_for_chat_template],
         tokenize=False,
-        add_generation_prompt=True,
+        add_generation_prompt=add_generation_prompt,
     )
 
     # this is the id-tokenized and image processed conversation template for the policy
     message: dict = processor.apply_chat_template(
         [user_message],
         tokenize=True,
-        add_generation_prompt=True,
+        add_generation_prompt=add_generation_prompt,
         return_tensors="pt",
         return_dict=True,
     )

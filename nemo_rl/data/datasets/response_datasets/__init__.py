@@ -33,6 +33,8 @@ from nemo_rl.data.datasets.response_datasets.openmathinstruct2 import (
 from nemo_rl.data.datasets.response_datasets.refcoco import RefCOCODataset
 from nemo_rl.data.datasets.response_datasets.response_dataset import ResponseDataset
 from nemo_rl.data.datasets.response_datasets.squad import SquadDataset
+from nemo_rl.data.datasets.response_datasets.thrive_vlm import ThriveVLMDataset
+from nemo_rl.data.datasets.response_datasets.thrive_vlm_grpo import ThriveVLMGRPODataset
 from nemo_rl.data.datasets.response_datasets.tulu3 import Tulu3SftMixtureDataset
 
 DATASET_REGISTRY = {
@@ -48,6 +50,8 @@ DATASET_REGISTRY = {
     "OpenMathInstruct-2": OpenMathInstruct2Dataset,
     "refcoco": RefCOCODataset,
     "squad": SquadDataset,
+    "thrive-vlm": ThriveVLMGRPODataset,
+    "thrive-vlm-sft": ThriveVLMDataset,
     "tulu3_sft_mixture": Tulu3SftMixtureDataset,
     # load from local JSONL file or HuggingFace
     "openai_format": OpenAIFormatDataset,

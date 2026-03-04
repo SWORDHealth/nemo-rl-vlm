@@ -68,13 +68,42 @@ def format_prompt_for_vllm_generation(
             prompt_dict = {"prompt": msg}
             # add additional data if present
             images = data.get("vllm_images", None)
-            if images is None or len(images[i]) == 0:
+            videos = data.get("vllm_videos", None)
+            video_metadata_list = data.get("vllm_video_metadata", None)
+
+            # If no multimodal data at all, fallback to regular prompt
+            if (images is None or len(images[i]) == 0) and (videos is None or len(videos[i]) == 0):
                 prompts.append(_get_regular_prompt(i))
                 continue
-            else:
-                prompt_dict["multi_modal_data"] = {
-                    "image": images[i][0] if len(images[i]) == 1 else images[i]
-                }
+
+            # Build multi_modal_data dict
+            multi_modal_data = {}
+            if images is not None and len(images[i]) > 0:
+                multi_modal_data["image"] = images[i][0] if len(images[i]) == 1 else images[i]
+            if videos is not None and len(videos[i]) > 0:
+                # Videos should be a list of frames
+                # vLLM expects video data as a tuple: (frames, metadata_dict)
+                # Qwen3-VL requires metadata (video_needs_metadata=True)
+                if video_metadata_list is None or i >= len(video_metadata_list) or video_metadata_list[i] is None:
+                    # Debug: print available keys
+                    import warnings
+                    warnings.warn(
+                        f"Video metadata missing for batch item {i}. "
+                        f"Available keys in data: {sorted(data.keys())}. "
+                        f"video_metadata_list: {video_metadata_list}. "
+                        f"videos length: {len(videos) if videos else 'N/A'}"
+                    )
+                    raise ValueError(
+                        f"Video metadata is required for Qwen3-VL but not provided for batch item {i}. "
+                        f"video_metadata_list: {video_metadata_list}"
+                    )
+                # Extract metadata dict from list (each item is [metadata_dict])
+                metadata = video_metadata_list[i][0] if isinstance(video_metadata_list[i], list) else video_metadata_list[i]
+                multi_modal_data["video"] = (videos[i], metadata)
+
+            if multi_modal_data:
+                prompt_dict["multi_modal_data"] = multi_modal_data
+
             prompts.append(prompt_dict)
     else:
         # Regular LLM generation using token_ids

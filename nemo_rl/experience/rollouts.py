@@ -430,6 +430,8 @@ def run_multi_turn_rollout(
             generation_input_data["vllm_images"] = active_batch["vllm_images"]
         if "vllm_videos" in active_batch:
             generation_input_data["vllm_videos"] = active_batch["vllm_videos"]
+        if "vllm_video_metadata" in active_batch:
+            generation_input_data["vllm_video_metadata"] = active_batch["vllm_video_metadata"]
 
         # generate_responses updates active_batch["message_log"] in-place
         active_batch, generated_ids, gen_metrics = generate_responses(

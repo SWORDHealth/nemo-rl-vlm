@@ -1,0 +1,118 @@
+defaults:
+  - sft.yaml
+
+sft:
+  val_at_start: false  # Skip validation at step 0
+
+policy:
+  model_name: "Qwen/Qwen3-VL-4B-Instruct"
+  tokenizer:
+    name: ${policy.model_name} ## specify if you'd like to use a tokenizer different from the model's default
+  train_global_batch_size: 16
+  train_micro_batch_size: 1
+  max_total_sequence_length: 1024
+  precision: "bfloat16"
+
+  sequence_packing:
+    enabled: False
+
+  # Disable DTensor optimizer (now using Megatron)
+  optimizer: null
+
+  # Megatron backend configuration
+  megatron_cfg:
+    enabled: true
+    empty_unused_memory_level: 1
+    activation_checkpointing: false
+    converter_type: Qwen2ForCausalLM  # Critical for converting HF checkpoint to Megatron format
+    apply_rope_fusion: False  # Required: Qwen3-VL uses MRoPE which is incompatible with RoPE fusion
+
+    # Parallelism settings (all set to 1 for 3B model on 2 GPUs)
+    tensor_model_parallel_size: 8
+    expert_tensor_parallel_size: 1
+    expert_model_parallel_size: 1
+    pipeline_model_parallel_size: 1
+    context_parallel_size: 1
+    pipeline_dtype: ${policy.precision}
+    sequence_parallel: false
+
+    # Optimizer configuration (moved from policy.optimizer)
+    optimizer:
+      optimizer: "adam"
+      lr: 5.0e-6
+      min_lr: 5.0e-7
+      weight_decay: 0.1
+      bf16: true
+      fp16: false
+      params_dtype: "float32"
+      adam_beta1: 0.9
+      adam_beta2: 0.98
+      adam_eps: 1e-5
+      use_distributed_optimizer: true
+      use_precision_aware_optimizer: true
+      clip_grad: ${policy.max_grad_norm}
+
+    # Scheduler configuration
+    scheduler:
+      start_weight_decay: ${policy.megatron_cfg.optimizer.weight_decay}
+      end_weight_decay: ${policy.megatron_cfg.optimizer.weight_decay}
+      weight_decay_incr_style: "constant"
+      lr_decay_style: "constant"
+      lr_decay_iters: 1000
+      lr_warmup_iters: 50
+      lr_warmup_init: 5.0e-7
+
+    # Distributed data parallel configuration
+    distributed_data_parallel_config:
+      grad_reduce_in_fp32: false
+      overlap_grad_reduce: true
+      overlap_param_gather: true
+      use_custom_fsdp: false
+      data_parallel_sharding_strategy: "optim_grads_params"
+
+  # Explicitly disable DTensor backend
+  dtensor_cfg:
+    enabled: false
+
+checkpointing:
+  enabled: true
+  checkpoint_dir: "results/sft_${policy.model_name}_megatron"
+  metric_name: "val:val_loss" # one of "val:" or "train:" followed by the metric name
+  higher_is_better: false
+  keep_top_k: 1
+  save_period: 10
+
+data:
+  max_input_seq_length: ${policy.max_total_sequence_length}
+  add_bos: true
+  add_eos: true
+  add_generation_prompt: false
+
+  # dataset
+  train:
+    dataset_name: clevr-cogent
+    split: train
+  validation:
+    dataset_name: clevr-cogent
+    split: valA
+  # default settings for all datasets
+  default:
+    prompt_file: null
+
+logger:
+  log_dir: "logs"  # Base directory for all logs
+  wandb_enabled: false # Make sure you do a ``wandb login [Your API key]'' before running
+  tensorboard_enabled: true
+  monitor_gpus: true  # If true, will monitor GPU usage and log to wandb and/or tensorboard
+  wandb:
+    project: "sft-dev"
+    name: "sft-dev-${data.train.dataset_name}-megatron"
+  tensorboard:
+    log_dir: "tb_logs-sft-dev-${data.train.dataset_name}-megatron"
+  gpu_monitoring:
+    collection_interval: 10  # How often to collect GPU usage metrics (in seconds)
+    flush_interval: 10  # How often to flush GPU usage metrics to the loggers (in seconds)
+
+cluster:
+  gpus_per_node: 8
+  num_nodes: 1

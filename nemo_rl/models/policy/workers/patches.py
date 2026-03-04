@@ -16,8 +16,11 @@ import os
 from importlib.util import find_spec
 
 import torch
-from torch.distributed.tensor._ops._tensor_ops import propagate_single_input_strategy
-from torch.distributed.tensor._ops.utils import register_op_strategy
+
+# Only import these for PyTorch 2.9.0 (they don't exist in 2.8.0)
+if torch.__version__.startswith("2.9"):
+    from torch.distributed.tensor._ops._tensor_ops import propagate_single_input_strategy
+    from torch.distributed.tensor._ops.utils import register_op_strategy
 
 
 def _get_transformer_engine_file(relative_path: str) -> str:

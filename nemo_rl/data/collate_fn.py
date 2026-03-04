@@ -55,9 +55,11 @@ def rl_collate_fn(data_batch: list[DatumSpec]) -> BatchedDataDict[Any]:
         ]
         vllm_images = [datum_spec.get("vllm_images", []) for datum_spec in data_batch]
         vllm_videos = [datum_spec.get("vllm_videos", []) for datum_spec in data_batch]
+        vllm_video_metadata = [datum_spec.get("vllm_video_metadata", []) for datum_spec in data_batch]
         extra_args["vllm_content"] = vllm_content
         extra_args["vllm_images"] = vllm_images
         extra_args["vllm_videos"] = vllm_videos
+        extra_args["vllm_video_metadata"] = vllm_video_metadata
 
     output: BatchedDataDict[Any] = BatchedDataDict(
         message_log=message_log,

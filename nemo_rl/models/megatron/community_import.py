@@ -146,7 +146,8 @@ def export_model_from_megatron(
         )
 
         # Save in HuggingFace format
-        bridge.save_hf_pretrained(megatron_model, output_path)
+        # strict=False allows saving incomplete shards (skips MTP tensors without mappings)
+        bridge.save_hf_pretrained(megatron_model, output_path, strict=False)
 
     # resetting mcore state
     import megatron.core.rerun_state_machine
