@@ -1,12 +1,12 @@
 grpo:
   num_prompts_per_step: 16
-  num_generations_per_prompt: 8
+  num_generations_per_prompt: 16
   max_rollout_turns: 1
   max_num_epochs: 1
   max_num_steps: 1000000
   normalize_rewards: true
   use_leave_one_out_baseline: true
-  val_period: 500
+  val_period: 11500
   val_at_start: false
   val_at_end: false
   overlong_filtering: false
@@ -47,22 +47,22 @@ loss_fn:
 
 checkpointing:
   enabled: true
-  checkpoint_dir: "/mnt/data/pmartins/vlm_ckpts/grpo_sft_qwen3_vl_4b_thrive_rep_feedback_severity_10k_2601_lr_5e-6_merged_rep_2601_full_exercise_feedback_0202_two_stage_0505_vanilla"
+  checkpoint_dir:  "/mnt/data/pmartins/vlm_ckpts/grpo_sft_qwen35_9b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_0903_10k_weighted_51"
   metric_name: "val:accuracy"
   higher_is_better: true
   keep_top_k: 3
-  save_period: 796
+  save_period: 625
   checkpoint_must_save_by: null
 
 policy:
-  model_name: /mnt/data/pmartins/vlm_ckpts/sft_qwen3_vl_4b_thrive_rep_feedback_severity_10k_2601_lr_5e-6/step_1390/hf/
+  model_name:  /mnt/data/pmartins/vlm_ckpts/sft_qwen_35_9b_repetition_feedback_severity_0903_10k/step_625/hf/
   tokenizer:
     name: ${policy.model_name}
   train_global_batch_size: 16
   train_micro_batch_size: 1
   generation_batch_size: 16
-  logprob_batch_size: 4
-  max_total_sequence_length: 65536
+  logprob_batch_size: 1
+  max_total_sequence_length: 32784
   precision: "bfloat16"
   offload_optimizer_for_logprob: false
 
@@ -113,11 +113,13 @@ policy:
     top_k: null
     stop_token_ids: null
     stop_strings: null
+    tokenizer:
+      name: ${policy.model_name}
     vllm_cfg:
       async_engine: false
       precision: ${policy.precision}
       kv_cache_dtype: "auto"
-      tensor_parallel_size: 8
+      tensor_parallel_size: 2
       pipeline_parallel_size: 1
       expert_parallel_size: 1
       gpu_memory_utilization: 0.6
@@ -141,7 +143,7 @@ policy:
     empty_unused_memory_level: 1
     activation_checkpointing: false
     converter_type: "Qwen2ForCausalLM"
-    tensor_model_parallel_size: 2
+    tensor_model_parallel_size: 4
     expert_tensor_parallel_size: 1
     expert_model_parallel_size: 1
     pipeline_model_parallel_size: 1
@@ -156,9 +158,11 @@ policy:
     moe_router_bias_update_rate: 0.0
     moe_permute_fusion: false
     moe_token_dispatcher_type: "allgather"
+    moe_enable_deepep: false
+    moe_shared_expert_overlap: false
     moe_grouped_gemm: true
     moe_per_layer_logging: false
-    apply_rope_fusion: false  # Required: Qwen3-VL uses MRoPE which is incompatible with RoPE fusion
+    apply_rope_fusion: false
     bias_activation_fusion: true
     defer_fp32_logits: false
 
@@ -203,7 +207,7 @@ data:
   max_input_seq_length: ${policy.max_total_sequence_length}
   train:
     dataset_name: "thrive-vlm"
-    dataset_path: "/mnt/data/shared/vlm/data/merged_rep_2601_full_exercise_feedback_0202/"
+    dataset_path: "/mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_0903_10k/train"
     env_name: "thrive-vlm"
     split: "train"
     shuffle: true
@@ -212,7 +216,7 @@ data:
     system_prompt_file: null
   validation:
     dataset_name: "thrive-vlm"
-    dataset_path: "/mnt/data/shared/vlm/data/merged_rep_2601_full_exercise_feedback_0202/"
+    dataset_path: "/mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_0903_10k/train"
     env_name: "thrive-vlm"
     split: "train"
     shuffle: false
@@ -223,19 +227,17 @@ data:
 env:
   thrive-vlm:
     num_workers: 8
-    # Reward mode for per-repetition samples
-    reward_mode: "two_stage"
-    # Reward mode for full-exercise analysis samples
-    full_exercise_reward_mode: "vanilla"
-    # Weighted mode parameters (can be used if switching reward_mode to "weighted")
-    error_weight: 1.0      # errors with GT severity > 1 or movement < 6
-    non_error_weight: 0.5  # errors with GT severity = 1 or movement = 6
-    # Two-stage mode parameters (can be used if switching reward_mode to "two_stage")
+    # Reward mode: "vanilla", "vanilla_quadratic", "vanilla_sqrt", "weighted", "weighted_quadratic", "weighted_sqrt", "two_stage", "two_stage_sqrt", "two_stage_weighted"
+    reward_mode: "weighted"
+    # Weighted mode: per-error weights based on GT severity
+    error_weight: 5.0      # errors with GT severity > 1
+    non_error_weight: 1.0  # errors with GT severity = 1
+    # Two-stage mode: weights for detection vs severity accuracy
     detection_weight: 0.5   # weight for error detection accuracy
     severity_weight: 0.5    # weight for severity score accuracy
 
 logger:
-  log_dir: "/home/pmartins/nemo-rl/logs/grpo_sft_qwen3_vl_4b_thrive_rep_feedback_severity_10k_2601_lr_5e-6_merged_rep_2601_full_exercise_feedback_0202_two_stage_0505_vanilla"
+  log_dir: "/home/pmartins/nemo-rl-vlm/logs_grpo/grpo_sft_qwen35_9b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_0903_10k_weighted_51"
   wandb_enabled: false
   tensorboard_enabled: true
   mlflow_enabled: false
@@ -243,17 +245,17 @@ logger:
   monitor_gpus: true
   num_val_samples_to_print: 0
   wandb:
-    project: "nemo-rl"
-    name: "grpo_qwen3_vl_4b_thrive_mixed"
+    project: "nemo-rl-vlm"
+    name: "grpo_sft_qwen35_9b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_0903_10k_weighted_51"
   tensorboard:
-    log_dir: "/home/pmartins/nemo-rl/logs/grpo_sft_qwen3_vl_4b_thrive_rep_feedback_severity_10k_2601_lr_5e-6_merged_rep_2601_full_exercise_feedback_0202_two_stage_0505_vanilla"
+    log_dir: "/home/pmartins/nemo-rl-vlm/logs_grpo/grpo_sft_qwen35_9b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_0903_10k_weighted_51"
   mlflow:
-    experiment_name: "nemo-rl"
-    run_name: "grpo_sft_qwen3_vl_4b_thrive_rep_feedback_severity_10k_2601_lr_5e-6_merged_rep_2601_full_exercise_feedback_0202_two_stage_0505_vanilla"
+    experiment_name: "nemo-rl-vlm"
+    run_name: "grpo_sft_qwen35_9b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_0903_10k_weighted_51"
   gpu_monitoring:
     collection_interval: 10
     flush_interval: 10
 
 cluster:
   gpus_per_node: 8
-  num_nodes: 1
+  num_nodes: 2

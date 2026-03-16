@@ -3,7 +3,7 @@
 from typing import Any, Optional
 
 from datasets import load_from_disk
-from PIL import Image
+from PIL import Image, ImageOps
 from transformers.video_utils import VideoMetadata
 
 from nemo_rl.data import ResponseDatasetConfig
@@ -42,6 +42,10 @@ def format_thrive_vlm_dataset(
             if isinstance(video_value[0], str):
                 # Load frame paths into PIL Images
                 video_value = [Image.open(frame_path).convert("RGB") for frame_path in video_value]
+
+                # Apply horizontal flip if requested in dataset
+                if example.get("need_to_flip", False):
+                    video_value = [ImageOps.mirror(frame) for frame in video_value]
 
         video_content = {
             "type": "video",
@@ -94,6 +98,10 @@ def format_thrive_vlm_dataset(
             # If image_value is a list of strings (image paths), load them as PIL Images
             if len(image_value) > 0 and isinstance(image_value[0], str):
                 image_value = [Image.open(img_path).convert("RGB") for img_path in image_value]
+
+                # Apply horizontal flip if requested in dataset
+                if example.get("need_to_flip", False):
+                    image_value = [ImageOps.mirror(img) for img in image_value]
 
             # Add each image as separate content item
             for img in image_value:

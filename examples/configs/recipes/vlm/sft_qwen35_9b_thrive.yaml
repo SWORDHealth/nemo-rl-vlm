@@ -12,19 +12,17 @@ sft:
 
 checkpointing:
   enabled: true
-  checkpoint_dir: "/mnt/data/pmartins/vlm_ckpts/sft_qwen_35_4b_repetition_feedback_severity_0903_10k_"
+  checkpoint_dir: "/mnt/data/pmartins/vlm_ckpts/sft_qwen_35_9b_repetition_feedback_severity_0903_10k"
   metric_name: "val:val_loss"
   higher_is_better: false
   keep_top_k: 3
-  save_period: 625 #1521
+  save_period: 625
   checkpoint_must_save_by: null
 
 policy:
-  model_name: "Qwen/Qwen3.5-4B"
+  model_name: "Qwen/Qwen3.5-9B"
   tokenizer:
     name: ${policy.model_name}
-    chat_template_kwargs:
-      enable_thinking: false
   train_global_batch_size: 16
   train_micro_batch_size: 1
   max_total_sequence_length: 32784
@@ -54,10 +52,10 @@ policy:
     empty_unused_memory_level: 1
     activation_checkpointing: false
     converter_type: "Qwen2ForCausalLM"
-    tensor_model_parallel_size: 2
+    tensor_model_parallel_size: 4
     expert_tensor_parallel_size: 1
     expert_model_parallel_size: 1
-    pipeline_model_parallel_size: 1
+    pipeline_model_parallel_size: 2
     sequence_parallel: false
     context_parallel_size: 1
     pipeline_dtype: ${policy.precision}
@@ -69,8 +67,6 @@ policy:
     moe_router_bias_update_rate: 0.0
     moe_permute_fusion: false
     moe_token_dispatcher_type: "allgather"
-    moe_enable_deepep: false
-    moe_shared_expert_overlap: false
     moe_grouped_gemm: true
     moe_per_layer_logging: false
     apply_rope_fusion: false
@@ -100,7 +96,7 @@ policy:
       end_weight_decay: ${policy.megatron_cfg.optimizer.weight_decay}
       weight_decay_incr_style: "constant"
       lr_decay_style: "cosine"
-      lr_decay_iters: 625 #1521
+      lr_decay_iters: 625
       lr_warmup_iters: 62
       lr_warmup_init: 0
 
@@ -137,7 +133,7 @@ data:
     roles_to_train_on: ["assistant"]
 
 logger:
-  log_dir: "logs/sft_qwen_35_4b_repetition_feedback_severity_0903_10k"
+  log_dir: "logs/sft_qwen_35_9b_repetition_feedback_severity_0903_10k"
   wandb_enabled: false
   tensorboard_enabled: true
   mlflow_enabled: false
@@ -146,12 +142,12 @@ logger:
   num_val_samples_to_print: 0
   wandb:
     project: "nemo-rl"
-    name: "sft_qwen_35_4b_repetition_feedback_severity_0903_10k"
+    name: "sft_qwen_35_9b_repetition_feedback_severity_0903_10k"
   tensorboard:
-    log_dir: "logs/sft_qwen_35_4b_repetition_feedback_severity_0903_10k"
+    log_dir: "logs/sft_qwen_35_9b_repetition_feedback_severity_0903_10k"
   mlflow:
     experiment_name: "nemo-rl"
-    run_name: "sft_qwen_35_4b_repetition_feedback_severity_0903_10k"
+    run_name: "sft_qwen_35_9b_repetition_feedback_severity_0903_10k"
   gpu_monitoring:
     collection_interval: 10
     flush_interval: 10

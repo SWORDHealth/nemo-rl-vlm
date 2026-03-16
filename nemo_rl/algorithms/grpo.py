@@ -228,11 +228,20 @@ def setup(
     CheckpointManager,
     GRPOSaveState,
     MasterConfig,
+    Optional[RayVirtualCluster],
 ]:
     """Main entry point for running GRPO algorithm.
 
+    Args:
+        master_config: Master configuration dictionary
+        tokenizer: Tokenizer instance
+        dataset: Training dataset
+        val_dataset: Optional validation dataset
+        processor: Optional processor for VLMs
+
     Returns:
-        tuple of policy, cluster, dataloader, tokenizer, loss_fn, math_env, logger, master_config, val_dataloader
+        tuple of (policy, policy_generation, (train_cluster, inference_cluster), dataloader,
+                  val_dataloader, loss_fn, logger, checkpointer, grpo_save_state, master_config)
     """
     # Start timing the entire setup process
     setup_start_time = time.perf_counter()
@@ -284,13 +293,24 @@ def setup(
     else:
         dataloader_batch_size = int(dataloader_batch_size * batch_multiplier)
 
+    # Get shuffle and num_workers from train config (new format) or top-level (old format)
+    if "train" in data_config:
+        # New format: data_config["train"] is a list of dataset configs
+        train_config = data_config["train"][0] if isinstance(data_config["train"], list) else data_config["train"]
+        shuffle = train_config.get("shuffle", True)
+        num_workers = train_config.get("num_workers", 0)
+    else:
+        # Old format: shuffle and num_workers are at top level
+        shuffle = data_config.get("shuffle", True)
+        num_workers = data_config.get("num_workers", 0)
+
     dataloader = StatefulDataLoader(
         dataset,
         batch_size=dataloader_batch_size,
-        shuffle=data_config["shuffle"],
+        shuffle=shuffle,
         collate_fn=rl_collate_fn,
         drop_last=True,
-        num_workers=data_config["num_workers"],
+        num_workers=num_workers,
     )
     if last_checkpoint_path is not None:
         dataloader_state_dict = torch.load(
@@ -316,7 +336,7 @@ def setup(
             batch_size=grpo_config["val_batch_size"],
             shuffle=False,
             collate_fn=rl_collate_fn,
-            num_workers=data_config["num_workers"],
+            num_workers=num_workers,
         )
         print(
             f"  ✓ Validation dataloader loaded with {len(val_dataset)} samples",
@@ -349,6 +369,33 @@ def setup(
     env_name_list = extract_necessary_env_names(data_config)
     rm_env_enabled = "reward_model" in env_name_list
 
+    # Check if judge is enabled in any environment
+    judge_enabled = False
+    judge_nodes = 0
+    judge_gpus_per_node = 0
+    judge_colocated = False
+    judge_colocation_target = "generation"  # or "policy"
+    judge_env_name = None
+
+    for env_name in env_name_list:
+        if env_name in env_configs:
+            env_cfg = env_configs[env_name]
+            if isinstance(env_cfg, dict) and "judge" in env_cfg:
+                judge_cfg = env_cfg["judge"]
+                if judge_cfg.get("enabled", False):
+                    judge_enabled = True
+                    judge_env_name = env_name
+                    judge_colocated = judge_cfg["colocated"]["enabled"]
+                    if judge_colocated:
+                        judge_colocation_target = judge_cfg["colocated"].get(
+                            "colocation_target", "generation"
+                        )
+                    else:
+                        judge_resource = judge_cfg.get("resources", {})
+                        judge_nodes = judge_resource.get("num_nodes", 1)
+                        judge_gpus_per_node = judge_resource.get("gpus_per_node", 1)
+                    break  # Only support one judge for now
+
     total_nodes = cluster_config["num_nodes"]
     if rm_env_enabled:
         rm_resource = env_configs["reward_model"]["resources"]
@@ -361,31 +408,41 @@ def setup(
     if total_nodes == 1:
         policy_nodes = total_nodes
     else:
-        policy_nodes = total_nodes - rm_nodes
+        # Account for both reward model and judge nodes (if not colocated)
+        reserved_nodes = rm_nodes + (judge_nodes if judge_enabled and not judge_colocated else 0)
+        policy_nodes = total_nodes - reserved_nodes
         assert policy_nodes > 0, (
             "policy_nodes must be > 0, but got "
-            f"policy_nodes:{policy_nodes} + rm_nodes:{rm_nodes} = total_nodes:{total_nodes}"
+            f"policy_nodes:{policy_nodes} = total_nodes:{total_nodes} - rm_nodes:{rm_nodes} - judge_nodes:{judge_nodes if judge_enabled and not judge_colocated else 0}"
         )
 
     if colocated_inference:
         if total_nodes == 1:
-            policy_gpus_per_node = cluster_config["gpus_per_node"] - rm_gpus_per_node
+            # Account for both reward model and judge GPUs (if not colocated)
+            reserved_gpus = rm_gpus_per_node + (judge_gpus_per_node if judge_enabled and not judge_colocated else 0)
+            policy_gpus_per_node = cluster_config["gpus_per_node"] - reserved_gpus
             assert policy_gpus_per_node > 0, (
                 "policy.generation.colocated.resources.gpus_per_node must be > 0 "
                 "when cluster.num_nodes = 1, "
-                f"but got {policy_gpus_per_node}."
+                f"but got {policy_gpus_per_node} = cluster.gpus_per_node:{cluster_config['gpus_per_node']} - rm_gpus:{rm_gpus_per_node} - judge_gpus:{judge_gpus_per_node if judge_enabled and not judge_colocated else 0}"
             )
         else:
             policy_gpus_per_node = cluster_config["gpus_per_node"]
+
+        # Calculate how many worker groups need colocation
+        # Policy always gets 1, generation gets 1 if colocated, judge gets 1 if enabled and colocated with generation
+        num_colocated_groups = 1  # policy
+        if generation_config["backend"] != "megatron":
+            num_colocated_groups += 1  # generation
+        if judge_enabled and judge_colocated and judge_colocation_target == "generation":
+            num_colocated_groups += 1  # judge
 
         cluster = RayVirtualCluster(
             name="grpo_policy_cluster",
             bundle_ct_per_node_list=[policy_gpus_per_node] * policy_nodes,
             use_gpus=True,
             num_gpus_per_node=policy_gpus_per_node,
-            max_colocated_worker_groups=1
-            if generation_config["backend"] == "megatron"
-            else 2,
+            max_colocated_worker_groups=num_colocated_groups,
         )
         train_cluster = cluster
         inference_cluster = cluster
@@ -457,12 +514,17 @@ def setup(
             train_nodes -= inference_nodes
 
         # initialize train cluster
+        # If judge is colocated with policy, we need 2 worker groups
+        train_max_colocated = 1
+        if judge_enabled and judge_colocated and judge_colocation_target == "policy":
+            train_max_colocated = 2
+
         train_cluster = RayVirtualCluster(
             name="grpo_train_cluster",
             bundle_ct_per_node_list=[train_gpus_per_node] * train_nodes,
             use_gpus=True,
             num_gpus_per_node=train_gpus_per_node,
-            max_colocated_worker_groups=1,
+            max_colocated_worker_groups=train_max_colocated,
         )
         print(
             f"  ✓ Ray train cluster initialized with {train_nodes} nodes with {train_gpus_per_node} GPUs per node",
@@ -470,17 +532,49 @@ def setup(
         )
 
         # initialize inference cluster
+        # If judge is colocated with generation, we need 2 worker groups
+        inference_max_colocated = 1
+        if judge_enabled and judge_colocated and judge_colocation_target == "generation":
+            inference_max_colocated = 2
+
         inference_cluster = RayVirtualCluster(
             name="grpo_inference_cluster",
             bundle_ct_per_node_list=[inference_gpus_per_node] * inference_nodes,
             use_gpus=True,
             num_gpus_per_node=inference_gpus_per_node,
-            max_colocated_worker_groups=1,
+            max_colocated_worker_groups=inference_max_colocated,
         )
         print(
             f"  ✓ Ray inference cluster initialized with {inference_nodes} nodes with {inference_gpus_per_node} GPUs per node",
             flush=True,
         )
+
+    # ==========================
+    #   Judge Cluster
+    # ==========================
+    judge_cluster = None
+    if judge_enabled:
+        if judge_colocated:
+            # Judge shares cluster with policy or generation
+            if judge_colocation_target == "policy":
+                judge_cluster = train_cluster
+                print(f"  ✓ Judge colocated with policy cluster", flush=True)
+            else:  # "generation"
+                judge_cluster = inference_cluster
+                print(f"  ✓ Judge colocated with generation cluster", flush=True)
+        else:
+            # Create dedicated judge cluster
+            judge_cluster = RayVirtualCluster(
+                name="grpo_judge_cluster",
+                bundle_ct_per_node_list=[judge_gpus_per_node] * judge_nodes,
+                use_gpus=True,
+                num_gpus_per_node=judge_gpus_per_node,
+                max_colocated_worker_groups=1,
+            )
+            print(
+                f"  ✓ Ray judge cluster initialized with {judge_nodes} nodes with {judge_gpus_per_node} GPUs per node",
+                flush=True,
+            )
 
     # ==========================
     #   Training and Inference

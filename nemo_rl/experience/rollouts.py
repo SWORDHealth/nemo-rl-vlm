@@ -95,6 +95,16 @@ def generate_responses(
 
     generated_texts = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
 
+    # DEBUG: Print generated outputs (only on first generation call)
+    if not hasattr(generate_responses, '_debug_printed'):
+        print("\n" + "="*80)
+        print("GENERATED OUTPUTS (first 2 samples for verification):")
+        for i, text in enumerate(generated_texts[:2]):
+            print(f"\n[Sample {i}] Generated text ({len(generated_ids[i])} tokens):")
+            print(f"{text}")
+        print("="*80 + "\n")
+        generate_responses._debug_printed = True
+
     # Append to message log
     for i, (text, input_length, total_length) in enumerate(
         zip(generated_texts, input_lengths, unpadded_sequence_lengths)
@@ -196,6 +206,16 @@ async def generate_responses_async(
         generated_ids.append(generated_part)
 
     generated_texts = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+
+    # DEBUG: Print generated outputs (only on first generation call)
+    if not hasattr(generate_responses, '_debug_printed'):
+        print("\n" + "="*80)
+        print("GENERATED OUTPUTS (first 2 samples for verification):")
+        for i, text in enumerate(generated_texts[:2]):
+            print(f"\n[Sample {i}] Generated text ({len(generated_ids[i])} tokens):")
+            print(f"{text}")
+        print("="*80 + "\n")
+        generate_responses._debug_printed = True
 
     # Append to message log
     for i, (text, input_length, total_length) in enumerate(

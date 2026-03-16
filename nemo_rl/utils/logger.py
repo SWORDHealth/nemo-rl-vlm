@@ -980,6 +980,46 @@ class Logger(LoggerInterface):
         for logger in self.loggers:
             logger.log_hyperparams(params)
 
+    @staticmethod
+    def _sanitize_content_for_json(content: Any) -> Any:
+        """Remove non-JSON-serializable objects from content field.
+
+        Handles multimodal content by extracting text and removing images/videos.
+
+        Args:
+            content: Content field which may contain PIL Images or other non-serializable objects
+
+        Returns:
+            Sanitized content that can be JSON-serialized
+        """
+        if isinstance(content, str):
+            return content
+        elif isinstance(content, list):
+            sanitized = []
+            for item in content:
+                if isinstance(item, str):
+                    sanitized.append(item)
+                elif isinstance(item, dict):
+                    # Extract only text content, skip images/videos
+                    if item.get("type") == "text":
+                        sanitized.append({"type": "text", "text": item.get("text", "")})
+                    elif item.get("type") in ["image", "video"]:
+                        # Placeholder for multimodal content - log metadata only
+                        media_data = item.get(item["type"])
+                        count = len(media_data) if isinstance(media_data, list) else 1
+                        sanitized.append({
+                            "type": item["type"],
+                            "count": count,
+                            "logged": False  # Indicate media was not serialized
+                        })
+                elif isinstance(item, list):
+                    # Nested list (recursively sanitize)
+                    sanitized.append(Logger._sanitize_content_for_json(item))
+            return sanitized
+        else:
+            # Fallback for unexpected types
+            return str(content)
+
     def log_batched_dict_as_jsonl(
         self, to_log: BatchedDataDict[Any] | dict[str, Any], filename: str
     ) -> None:
@@ -999,10 +1039,22 @@ class Logger(LoggerInterface):
         # Write to JSONL file
         with open(filepath, "w") as f:
             for i, sample in enumerate(to_log.make_microbatch_iterator(1)):
+                # Create a sanitized copy for JSON serialization
+                json_sample = {}
                 for key, value in sample.items():
                     if isinstance(value, torch.Tensor):
-                        sample[key] = value.tolist()
-                f.write(json.dumps({**sample, "idx": i}) + "\n")
+                        json_sample[key] = value.tolist()
+                    elif key == "content":
+                        # Sanitize content to remove PIL Images and other non-serializable objects
+                        json_sample[key] = self._sanitize_content_for_json(value)
+                    else:
+                        # Try to serialize, use string representation if not serializable
+                        try:
+                            json.dumps(value)  # Test serialization
+                            json_sample[key] = value
+                        except (TypeError, ValueError):
+                            json_sample[key] = str(value)
+                f.write(json.dumps({**json_sample, "idx": i}) + "\n")
 
         print(f"Logged data to {filepath}")
 

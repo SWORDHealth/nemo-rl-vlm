@@ -29,7 +29,7 @@ from nemo_rl.data.interfaces import (
     TaskDataSpec,
     VLMMessageLogType,
 )
-from nemo_rl.data.llm_message_utils import get_formatted_message_log
+from nemo_rl.data.llm_message_utils import get_formatted_message_log, get_videos_from_message
 
 TokenizerType = PreTrainedTokenizerBase
 
@@ -158,6 +158,12 @@ def sft_processor(
         )
 
         datum_dict = format_clevr_cogent_dataset(datum_dict)
+    elif datum_dict.get("task_name") == "thrive-vlm":
+        from nemo_rl.data.datasets.response_datasets.thrive_vlm_grpo import (
+            format_thrive_vlm_grpo_dataset,
+        )
+
+        datum_dict = format_thrive_vlm_grpo_dataset(datum_dict, return_pil=True)
 
     message_log = get_formatted_message_log(
         datum_dict["messages"],
@@ -183,10 +189,126 @@ def sft_processor(
     output: DatumSpec = {
         "message_log": message_log,
         "length": length,
-        "extra_env_info": None,
+        "extra_env_info": datum_dict.get("extra_env_info"),  # Preserve metadata for environment
         "loss_multiplier": loss_multiplier,
         "idx": idx,
+        "task_name": datum_dict.get("task_name"),  # Preserve task_name for environment matching
     }
+
+    return output
+
+
+def grpo_processor(
+    datum_dict: dict[str, Any],
+    task_data_spec: TaskDataSpec,
+    tokenizer,
+    max_seq_length: int,
+    idx: int,
+    add_bos: bool = True,
+    add_eos: bool = True,
+    add_generation_prompt: bool = True,  # Always True for GRPO generation
+    datum_preprocessor: Optional[Callable] = None,
+) -> DatumSpec:
+    """Process a datum dictionary for GRPO training.
+
+    Key differences from sft_processor:
+    - vllm_content: Filters out assistant messages (only system+user for generation)
+    - message_log: Keeps full conversation (will be updated with generated response later)
+    - add_generation_prompt: Defaults to True for GRPO
+    """
+    # Initialize vLLM video fields (will be populated for thrive-vlm tasks)
+    videos = []
+    video_metadata_list = []
+
+    # optional preprocessor
+    if datum_preprocessor is not None:
+        datum_dict = datum_preprocessor(datum_dict)
+    elif datum_dict["task_name"] == "clevr-cogent":
+        from nemo_rl.data.datasets.response_datasets.clevr import (
+            format_clevr_cogent_dataset,
+        )
+
+        datum_dict = format_clevr_cogent_dataset(datum_dict)
+    elif datum_dict.get("task_name") == "thrive-vlm":
+        from nemo_rl.data.datasets.response_datasets.thrive_vlm_grpo import (
+            format_thrive_vlm_grpo_dataset,
+        )
+
+        datum_dict = format_thrive_vlm_grpo_dataset(datum_dict, return_pil=True)
+
+        # Extract videos and metadata for vLLM generation
+        for message in datum_dict.get("messages", []):
+            videos_in_msg = get_videos_from_message(message)
+            if len(videos_in_msg) > 0:
+                videos.extend(videos_in_msg)
+                # Extract metadata from message content
+                if isinstance(message.get("content"), list):
+                    for item in message["content"]:
+                        if item.get("type") == "video" and "video_metadata" in item:
+                            metadata = item["video_metadata"]
+                            # Convert VideoMetadata dataclass to dict if needed
+                            if hasattr(metadata, "__dict__"):
+                                metadata_dict = metadata.__dict__
+                            else:
+                                metadata_dict = metadata
+                            video_metadata_list.append(metadata_dict)
+
+    # Filter messages for GRPO: only system and user roles (NO assistant)
+    # This ensures the model generates the response, not copies ground truth
+    # The generated response will be appended to message_log by generate_responses()
+    filtered_messages = [
+        msg for msg in datum_dict["messages"]
+        if msg.get("role") in ["system", "user"]
+    ]
+
+    # Create message_log from filtered messages (without assistant ground truth)
+    # generate_responses() will append the generated assistant message later
+    message_log = get_formatted_message_log(
+        filtered_messages,
+        tokenizer,
+        task_data_spec,
+        add_bos_token=add_bos,
+        add_eos_token=add_eos,
+        add_generation_prompt=add_generation_prompt,
+        tools=datum_dict.get("tools", None),  # Pass tools from data if present
+    )
+
+    length = sum(len(m["token_ids"]) for m in message_log)
+
+    loss_multiplier = 1.0
+    if length > max_seq_length:
+        # make smaller and mask out
+        for message in message_log:
+            message["token_ids"] = message["token_ids"][
+                : min(4, max_seq_length // len(message_log))
+            ]
+        loss_multiplier = 0.0
+
+    # Create vLLM fields for thrive-vlm tasks
+    vllm_kwargs = {}
+    if datum_dict.get("task_name") == "thrive-vlm" and len(videos) > 0:
+        # Create vllm_content using filtered messages
+        vllm_content = tokenizer.apply_chat_template(
+            filtered_messages,
+            tokenize=False,
+            add_generation_prompt=True,  # Always add generation prompt for GRPO
+        )
+        vllm_kwargs = {
+            "vllm_content": vllm_content,
+            "vllm_videos": videos,
+            "vllm_video_metadata": video_metadata_list,
+        }
+
+    output: DatumSpec = {
+        "message_log": message_log,
+        "length": length,
+        "extra_env_info": datum_dict.get("extra_env_info"),  # Preserve metadata for environment
+        "loss_multiplier": loss_multiplier,
+        "idx": idx,
+        "task_name": datum_dict.get("task_name"),  # Preserve task_name for environment matching
+        **vllm_kwargs,  # Add vLLM fields for video generation
+    }
+
     return output
 
 
@@ -720,6 +842,7 @@ PROCESSOR_REGISTRY: Dict[str, TaskDataProcessFnCallable] = cast(
         "math_hf_data_processor": math_hf_data_processor,
         "multichoice_qa_processor": multichoice_qa_processor,
         "sft_processor": sft_processor,
+        "grpo_processor": grpo_processor,
         "vlm_hf_data_processor": vlm_hf_data_processor,
         "nemo_gym_data_processor": nemo_gym_data_processor,
     },

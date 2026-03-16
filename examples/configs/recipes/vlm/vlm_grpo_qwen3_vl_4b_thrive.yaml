@@ -8,6 +8,7 @@ grpo:
   use_leave_one_out_baseline: true
   val_period: 500
   val_at_start: false
+  val_at_end: false
   overlong_filtering: false
   max_val_samples: 256
   val_batch_size: 256
@@ -28,6 +29,7 @@ grpo:
   async_grpo:
     enabled: false
     max_trajectory_age_steps: 1
+  seq_logprob_error_threshold: null
 
 loss_fn:
   reference_policy_kl_penalty: 0.01
@@ -45,7 +47,7 @@ loss_fn:
 
 checkpointing:
   enabled: true
-  checkpoint_dir: "/mnt/data/pmartins/vlm_ckpts/grpo_sft_qwen3_vl_4b_thrive_merged_rep_2302_10k_diverse_full_exercise_feedback_0202_text_video_aux_tasks_1102_image_aux_tasks_mixed_b_lr_5e-6_feedback_severity_10k_2601_two_stage_0505_weighted_105"
+  checkpoint_dir: "/mnt/data/pmartins/vlm_ckpts/test_grpo"
   metric_name: "val:accuracy"
   higher_is_better: true
   keep_top_k: 3
@@ -53,7 +55,7 @@ checkpointing:
   checkpoint_must_save_by: null
 
 policy:
-  model_name: /mnt/data/pmartins/vlm_ckpts/sft_qwen3_vl_4b_thrive_merged_rep_2302_10k_diverse_full_exercise_feedback_0202_text_video_aux_tasks_1102_image_aux_tasks_mixed_b_lr_5e-6/step_1666/hf/
+  model_name: Qwen/Qwen3-VL-4B-Instruct
   tokenizer:
     name: ${policy.model_name}
   train_global_batch_size: 16
@@ -154,6 +156,8 @@ policy:
     moe_router_bias_update_rate: 0.0
     moe_permute_fusion: false
     moe_token_dispatcher_type: "allgather"
+    moe_enable_deepep: false
+    moe_shared_expert_overlap: false
     moe_grouped_gemm: true
     moe_per_layer_logging: false
     apply_rope_fusion: false  # Required: Qwen3-VL uses MRoPE which is incompatible with RoPE fusion
@@ -199,13 +203,24 @@ policy:
 
 data:
   max_input_seq_length: ${policy.max_total_sequence_length}
-  prompt_file: null
-  system_prompt_file: null
-  dataset_name: "thrive-vlm"
-  dataset_path: "/mnt/data/shared/vlm/data/repetition_feedback_severity_10k_2601/train/"
-  split: "train"
-  shuffle: true
-  num_workers: 8
+  train:
+    dataset_name: "thrive-vlm"
+    dataset_path: "/mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_0903_10k/train"
+    env_name: "thrive-vlm"
+    split: "train"
+    shuffle: true
+    num_workers: 8
+    prompt_file: null
+    system_prompt_file: null
+  validation:
+    dataset_name: "thrive-vlm"
+    dataset_path: "/mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_0903_10k/train"
+    env_name: "thrive-vlm"
+    split: "train"
+    shuffle: false
+    num_workers: 8
+    prompt_file: null
+    system_prompt_file: null
 
 env:
   thrive-vlm:
@@ -220,7 +235,7 @@ env:
     severity_weight: 0.5    # weight for severity score accuracy
 
 logger:
-  log_dir: "/home/pmartins/nemo-rl/logs/grpo_sft_qwen3_vl_4b_thrive_merged_rep_2302_10k_diverse_full_exercise_feedback_0202_text_video_aux_tasks_1102_image_aux_tasks_mixed_b_lr_5e-6_feedback_severity_10k_2601_two_stage_0505_weighted_105"
+  log_dir: "/home/pmartins/nemo-rl/logs/test"
   wandb_enabled: false
   tensorboard_enabled: true
   mlflow_enabled: false
@@ -229,12 +244,12 @@ logger:
   num_val_samples_to_print: 0
   wandb:
     project: "nemo-rl"
-    name: "grpo_qwen3_vl_4b_thrive"
+    name: "test"
   tensorboard:
-    log_dir: "/home/pmartins/nemo-rl/logs/grpo_sft_qwen3_vl_4b_thrive_merged_rep_2302_10k_diverse_full_exercise_feedback_0202_text_video_aux_tasks_1102_image_aux_tasks_mixed_b_lr_5e-6_feedback_severity_10k_2601_two_stage_0505_weighted_105"
+    log_dir: "/home/pmartins/nemo-rl/logs/test"
   mlflow:
     experiment_name: "nemo-rl"
-    run_name: "grpo_sft_qwen3_vl_4b_thrive_merged_rep_2302_10k_diverse_full_exercise_feedback_0202_text_video_aux_tasks_1102_image_aux_tasks_mixed_b_lr_5e-6_feedback_severity_10k_2601_two_stage_0505_weighted_105"
+    run_name: "test"
   gpu_monitoring:
     collection_interval: 10
     flush_interval: 10

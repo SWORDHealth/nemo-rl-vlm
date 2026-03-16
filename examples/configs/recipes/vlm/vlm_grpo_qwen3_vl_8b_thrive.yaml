@@ -8,6 +8,7 @@ grpo:
   use_leave_one_out_baseline: true
   val_period: 500
   val_at_start: false
+  val_at_end: false
   overlong_filtering: false
   max_val_samples: 256
   val_batch_size: 256
@@ -28,6 +29,7 @@ grpo:
   async_grpo:
     enabled: false
     max_trajectory_age_steps: 1
+  seq_logprob_error_threshold: null
 
 loss_fn:
   reference_policy_kl_penalty: 0.01
@@ -199,13 +201,24 @@ policy:
 
 data:
   max_input_seq_length: ${policy.max_total_sequence_length}
-  prompt_file: null
-  system_prompt_file: null
-  dataset_name: "thrive-vlm"
-  dataset_path: "/mnt/data/shared/vlm/data/repetition_feedback_severity_10k_2601/train/"
-  split: "train"
-  shuffle: true
-  num_workers: 8
+  train:
+    dataset_name: "thrive-vlm"
+    dataset_path: "/mnt/data/shared/vlm/data/repetition_feedback_severity_10k_2601/train/"
+    env_name: "thrive-vlm"
+    split: "train"
+    shuffle: true
+    num_workers: 8
+    prompt_file: null
+    system_prompt_file: null
+  validation:
+    dataset_name: "thrive-vlm"
+    dataset_path: "/mnt/data/shared/vlm/data/repetition_feedback_severity_10k_2601/train/"
+    env_name: "thrive-vlm"
+    split: "train"
+    shuffle: false
+    num_workers: 8
+    prompt_file: null
+    system_prompt_file: null
 
 env:
   thrive-vlm:

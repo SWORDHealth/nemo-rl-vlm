@@ -134,10 +134,12 @@ def extract_necessary_env_names(data_config: dict) -> list[str]:
     necessary_env_names = set()
     keys = ["train", "validation", "default"]
     for key in keys:
-        if (
-            key in data_config
-            and data_config[key] is not None
-            and "env_name" in data_config[key]
-        ):
-            necessary_env_names.add(data_config[key]["env_name"])
+        if key in data_config and data_config[key] is not None:
+            # Handle both dict and list cases (train/validation may be converted to list)
+            if isinstance(data_config[key], list):
+                for item in data_config[key]:
+                    if isinstance(item, dict) and "env_name" in item:
+                        necessary_env_names.add(item["env_name"])
+            elif isinstance(data_config[key], dict) and "env_name" in data_config[key]:
+                necessary_env_names.add(data_config[key]["env_name"])
     return list(necessary_env_names)

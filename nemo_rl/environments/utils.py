@@ -50,6 +50,9 @@ ENV_REGISTRY: Dict[str, EnvRegistryEntry] = {
     "nemo_gym": {
         "actor_class_fqn": "nemo_rl.environments.nemo_gym.NemoGym",
     },
+    "thrive-vlm": {
+        "actor_class_fqn": "nemo_rl.environments.thrive_vlm_environment.ThriveVLMEnvironment",
+    },
 }
 
 
@@ -100,7 +103,18 @@ def chunk_list_to_workers(to_chunk: list[Any], num_workers: int) -> list[list[An
     return chunks
 
 
-def create_env(env_name: str, env_config: dict) -> EnvironmentInterface:
+def create_env(env_name: str, env_config: dict, **kwargs) -> EnvironmentInterface:
+    """Create an environment actor with the given configuration.
+
+    Args:
+        env_name: Name of the environment (must be in ENV_REGISTRY)
+        env_config: Configuration dictionary for the environment
+        **kwargs: Additional keyword arguments to pass to the environment constructor
+                  (e.g., judge_cluster for ThriveVLMEnvironment)
+
+    Returns:
+        Ray remote actor handle for the environment
+    """
     assert env_name in ENV_REGISTRY, (
         f"Env name {env_name} is not registered in ENV_REGISTRY. Please call register_env() to register the environment."
     )
@@ -122,7 +136,7 @@ def create_env(env_name: str, env_config: dict) -> EnvironmentInterface:
             "py_executable": actor_py_exec,
             "env_vars": {**dict(os.environ), **extra_env_vars},
         }
-    ).remote(env_config)
+    ).remote(env_config, **kwargs)
     return env
 
 

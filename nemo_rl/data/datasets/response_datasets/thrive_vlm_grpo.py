@@ -16,7 +16,7 @@ import json
 from typing import Any, Optional
 
 from datasets import load_from_disk
-from PIL import Image
+from PIL import Image, ImageOps
 from transformers.video_utils import VideoMetadata
 
 from nemo_rl.data import ResponseDatasetConfig
@@ -56,6 +56,10 @@ def format_thrive_vlm_grpo_dataset(
                 Image.open(frame_path).convert("RGB") for frame_path in video_value
             ]
 
+            # Apply horizontal flip if requested in dataset
+            if example.get("need_to_flip", False):
+                video_value = [ImageOps.mirror(frame) for frame in video_value]
+
     video_content = {
         "type": "video",
         "video": video_value,  # Path, URL, or PIL frames
@@ -72,9 +76,15 @@ def format_thrive_vlm_grpo_dataset(
     if isinstance(video_value, (list, tuple)) and len(video_value) > 0:
         # Get frame dimensions from first frame
         first_frame = video_value[0]
-        if hasattr(first_frame, "size"):  # PIL Image
+
+        # Handle different frame types: PIL Image, tensor, or string path
+        if isinstance(first_frame, str):
+            # If it's a path, load it temporarily to get dimensions
+            temp_frame = Image.open(first_frame).convert("RGB")
+            width, height = temp_frame.size
+        elif hasattr(first_frame, "size"):  # PIL Image
             width, height = first_frame.size
-        else:
+        else:  # Tensor
             height, width = first_frame.shape[-2:]
 
         video_metadata = VideoMetadata(
@@ -161,6 +171,10 @@ def format_thrive_vlm_grpo_dataset(
         "messages": result_messages,
         "task_name": "thrive-vlm",
         "task_type": task_type,
+        "extra_env_info": {
+            "ground_truth": assistant_content,
+            "task_type": task_type,
+        },
     }
 
     return ret
@@ -206,9 +220,14 @@ def prepare_thrive_vlm_grpo_dataset(
         train_dataset = raw
         val_dataset = raw
 
-    # Format - disable features to avoid schema conflicts
-    train_dataset = train_dataset.add_column("task_name", [task_name] * len(train_dataset))
-    val_dataset = val_dataset.add_column("task_name", [task_name] * len(val_dataset))
+    # Format - add task_name column if not present
+    # Note: Keep dataset_type column as is (it contains data categories like "repetition", "severity")
+    # and add a separate task_name column for GRPO environment matching
+    if "task_name" not in train_dataset.column_names:
+        train_dataset = train_dataset.add_column("task_name", [task_name] * len(train_dataset))
+
+    if "task_name" not in val_dataset.column_names:
+        val_dataset = val_dataset.add_column("task_name", [task_name] * len(val_dataset))
 
     return {
         "train": train_dataset,
@@ -226,6 +245,8 @@ class ThriveVLMGRPODataset:
         self,
         dataset_name: str,
         split: str = "train",
+        dataset_path: Optional[str] = None,
+        **kwargs,  # Accept other params from config
     ):
         if split not in ["train", "validation"]:
             raise ValueError(
@@ -233,10 +254,13 @@ class ThriveVLMGRPODataset:
             )
         self.task_name = "thrive-vlm"
 
+        # Use dataset_path if provided, otherwise use dataset_name as the path
+        path = dataset_path if dataset_path is not None else dataset_name
+
         self.formatted_ds = prepare_thrive_vlm_grpo_dataset(
             split=split,
             task_name=self.task_name,
-            dataset_name=dataset_name,
+            dataset_name=path,
         )
 
         self.task_spec = TaskDataSpec(
@@ -271,11 +295,13 @@ class ThriveVLMGRPODataset:
         )
 
     def set_processor(self):
-        """Set the data processor to sft_processor.
+        """Set the data processor to grpo_processor.
 
-        For Thrive VLM GRPO, we use sft_processor which will be configured
-        with format_thrive_vlm_grpo_dataset as datum_preprocessor.
+        For Thrive VLM GRPO, we use grpo_processor which:
+        - Filters assistant messages from vllm_content (only system+user for generation)
+        - Keeps full conversation in message_log (for logprobs after generation)
+        - Uses format_thrive_vlm_grpo_dataset as datum_preprocessor
         """
-        from nemo_rl.data.processors import sft_processor
+        from nemo_rl.data.processors import grpo_processor
 
-        self.processor = sft_processor
+        self.processor = grpo_processor

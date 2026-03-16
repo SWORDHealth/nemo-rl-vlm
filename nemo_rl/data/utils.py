@@ -76,7 +76,12 @@ def setup_response_data(
         env_name_list = extract_necessary_env_names(data_config)
         envs = {}
         for env_name in env_name_list:
-            registered_env_name = "vlm" if is_vlm else env_name
+            # Only override to "vlm" if is_vlm=True AND env_name is not already a specific VLM environment
+            # This allows specialized VLM environments like "thrive-vlm" to be used correctly
+            if is_vlm and env_name not in ["thrive-vlm"]:
+                registered_env_name = "vlm"
+            else:
+                registered_env_name = env_name
             envs[env_name] = create_env(
                 env_name=registered_env_name, env_config=env_configs[env_name]
             )

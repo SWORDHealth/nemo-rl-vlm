@@ -3,7 +3,7 @@ defaults: ../../sft.yaml
 sft:
   max_num_epochs: 1
   max_num_steps: 1000000
-  val_period: 100
+  val_period: 100000
   val_batches: 8
   val_global_batch_size: 16
   val_micro_batch_size: 1
@@ -20,12 +20,12 @@ checkpointing:
   checkpoint_must_save_by: null
 
 policy:
-  model_name: "Qwen/Qwen3.5-35B-A3B"
+  model_name: /mnt/data/shared/models/Qwen3.5-35B-A3B/
   tokenizer:
     name: ${policy.model_name}
   train_global_batch_size: 16
   train_micro_batch_size: 1
-  max_total_sequence_length: 65536
+  max_total_sequence_length: 32768 #65536
   precision: "bfloat16"
 
   offload_optimizer_for_logprob: false
@@ -50,12 +50,12 @@ policy:
   megatron_cfg:
     enabled: true
     empty_unused_memory_level: 1
-    activation_checkpointing: false
+    activation_checkpointing: true
     converter_type: "Qwen2ForCausalLM"
-    tensor_model_parallel_size: 8
+    tensor_model_parallel_size: 1
     expert_tensor_parallel_size: 1
-    expert_model_parallel_size: 1
-    pipeline_model_parallel_size: 1
+    expert_model_parallel_size: 8
+    pipeline_model_parallel_size: 4
     sequence_parallel: false
     context_parallel_size: 1
     pipeline_dtype: ${policy.precision}
@@ -65,7 +65,7 @@ policy:
     moe_router_dtype: "fp64"
     moe_router_load_balancing_type: "none"
     moe_router_bias_update_rate: 0.0
-    moe_permute_fusion: false
+    moe_permute_fusion: true  # Enable for 20% speedup and better memory efficiency
     moe_token_dispatcher_type: "allgather"
     moe_grouped_gemm: true
     moe_per_layer_logging: false
@@ -88,8 +88,8 @@ policy:
       use_distributed_optimizer: true
       use_precision_aware_optimizer: true
       clip_grad: ${policy.max_grad_norm}
-      optimizer_cpu_offload: false
-      optimizer_offload_fraction: 0.0
+      optimizer_cpu_offload: true  # Enable to reduce GPU memory usage
+      optimizer_offload_fraction: 1.0  # Offload all optimizer states to CPU
 
     scheduler:
       start_weight_decay: ${policy.megatron_cfg.optimizer.weight_decay}
@@ -102,8 +102,8 @@ policy:
 
     distributed_data_parallel_config:
       grad_reduce_in_fp32: false
-      overlap_grad_reduce: false
-      overlap_param_gather: false
+      overlap_grad_reduce: true  # Enable for better memory efficiency
+      overlap_param_gather: true  # Enable for better memory efficiency
       average_in_collective: true
       use_custom_fsdp: false
       data_parallel_sharding_strategy: "optim_grads_params"
@@ -122,11 +122,11 @@ data:
 
   train:
     dataset_name: thrive-vlm-sft
-    data_path: /mnt/data/shared/vlm/data/repetition_feedback_severity_10k_2601/train
+    data_path: /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_10k_2601/train
     split: train
   validation:
     dataset_name: thrive-vlm-sft
-    data_path: /mnt/data/shared/vlm/data/repetition_feedback_severity_10k_2601/train
+    data_path: /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_10k_2601/train
     split: validation
   default:
     prompt_file: null
@@ -155,4 +155,4 @@ logger:
 
 cluster:
   gpus_per_node: 8
-  num_nodes: 1
+  num_nodes: 4

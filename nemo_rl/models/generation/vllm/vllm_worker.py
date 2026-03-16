@@ -203,7 +203,7 @@ class BaseVllmGenerationWorker:
                 - This is a workaround to fix async vllm in some scenarios.
                 - See https://github.com/NVIDIA-NeMo/RL/pull/898 for more details.
             """
-            file_to_patch = _get_vllm_file("v1/executor/ray_executor.py")
+            file_to_patch = _get_vllm_file("v1/executor/ray_distributed_executor.py")
 
             with open(file_to_patch, "r") as f:
                 content = f.read()
@@ -320,10 +320,20 @@ class BaseVllmGenerationWorker:
         _patch_vllm_init_workers_ray()
         logger.info("Successfully patched vllm _init_workers_ray.")
 
-        _patch_vllm_vit_flash_attn_backend()
-        logger.info("Successfully patched vllm vit flash attention backend.")
-
-        _patch_vllm_speculative_decoding_post_step()
+        # These patches are only needed for vLLM < 0.16.0
+        # They're already fixed in vLLM >= 0.16.0 and the file structure has changed
+        try:
+            import vllm
+            from packaging.version import Version
+            vllm_version = Version(vllm.__version__.split("+")[0])  # Remove git suffix
+            if vllm_version < Version("0.16.0"):
+                _patch_vllm_vit_flash_attn_backend()
+                logger.info("Successfully patched vllm vit flash attention backend.")
+                _patch_vllm_speculative_decoding_post_step()
+            else:
+                logger.info(f"Skipping vLLM patches for version {vllm.__version__} (>= 0.16.0) - fixes already included upstream.")
+        except Exception as e:
+            logger.warning(f"Could not determine vLLM version, skipping conditional patches: {e}")
 
         try:
             import vllm

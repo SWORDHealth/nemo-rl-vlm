@@ -80,6 +80,9 @@ def model_forward(
     )
     if len(multimodal_data) > 0:
         position_ids = None
+        # Disable packed_seq_params for multimodal data (VLM models compute position IDs internally,
+        # and packed sequence metadata is incompatible with dynamic vision token counts)
+        packed_seq_params = None
 
     additional_kwargs = {}
     # Mamba models currently do not support packed_seq_params

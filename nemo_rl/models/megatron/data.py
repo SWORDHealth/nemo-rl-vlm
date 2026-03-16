@@ -279,6 +279,13 @@ def process_microbatch(
                 eod_mask_loss=False,
                 pad_mask_loss=False,
             )
+
+    # For multimodal data, let VLM model compute attention_mask and position_ids internally
+    # (VLM models need these based on dynamic vision token positions)
+    if len(data_dict.get_multimodal_dict()) > 0:
+        attention_mask = None
+        position_ids = None
+
     return ProcessedInputs(
         input_ids=input_ids,
         input_ids_cp_sharded=input_ids_cp_sharded,

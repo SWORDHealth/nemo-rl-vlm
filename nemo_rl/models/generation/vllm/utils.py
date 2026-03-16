@@ -66,6 +66,7 @@ def format_prompt_for_vllm_generation(
                 continue
             # init prompt dict
             prompt_dict = {"prompt": msg}
+
             # add additional data if present
             images = data.get("vllm_images", None)
             videos = data.get("vllm_videos", None)
@@ -99,6 +100,7 @@ def format_prompt_for_vllm_generation(
                     )
                 # Extract metadata dict from list (each item is [metadata_dict])
                 metadata = video_metadata_list[i][0] if isinstance(video_metadata_list[i], list) else video_metadata_list[i]
+
                 multi_modal_data["video"] = (videos[i], metadata)
 
             if multi_modal_data:
