@@ -47,11 +47,11 @@ loss_fn:
 
 checkpointing:
   enabled: true
-  checkpoint_dir: "/mnt/data/pmartins/vlm_ckpts/grpo_sft_qwen35_4b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_0903_10k_detection_correctness_severity_02502505"
+  checkpoint_dir: "/mnt/data/pmartins/vlm_ckpts/grpo_sft_qwen35_4b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_grpo_1603_detection_correctness_severity_02502505"
   metric_name: "val:accuracy"
   higher_is_better: true
   keep_top_k: 3
-  save_period: 625
+  save_period: 571
   checkpoint_must_save_by: null
 
 policy:
@@ -207,7 +207,7 @@ data:
   max_input_seq_length: ${policy.max_total_sequence_length}
   train:
     dataset_name: "thrive-vlm"
-    dataset_path: "/mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_0903_10k/train"
+    dataset_path: /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_grpo_1603/train
     env_name: "thrive-vlm"
     split: "train"
     shuffle: true
@@ -216,7 +216,7 @@ data:
     system_prompt_file: null
   validation:
     dataset_name: "thrive-vlm"
-    dataset_path: "/mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_0903_10k/train"
+    dataset_path: /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_grpo_1603/train
     env_name: "thrive-vlm"
     split: "train"
     shuffle: false
@@ -239,7 +239,7 @@ env:
     severity_weight: 0.5       # Weight for distance-based severity accuracy
 
 logger:
-  log_dir: "/home/pmartins/nemo-rl-vlm/logs_grpo/grpo_sft_qwen35_4b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_0903_10k_detection_correctness_severity_02502505"
+  log_dir: "/home/pmartins/nemo-rl-vlm/logs_grpo/grpo_sft_qwen35_4b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_grpo_1603_detection_correctness_severity_02502505"
   wandb_enabled: false
   tensorboard_enabled: true
   mlflow_enabled: false
@@ -248,12 +248,12 @@ logger:
   num_val_samples_to_print: 0
   wandb:
     project: "nemo-rl-vlm"
-    name: "grpo_sft_qwen35_4b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_0903_10k_detection_correctness_severity_02502505"
+    name: "grpo_sft_qwen35_4b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_grpo_1603_detection_correctness_severity_02502505"
   tensorboard:
-    log_dir: "/home/pmartins/nemo-rl-vlm/logs_grpo/grpo_sft_qwen35_4b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_0903_10k_detection_correctness_severity_02502505"
+    log_dir: "/home/pmartins/nemo-rl-vlm/logs_grpo/grpo_sft_qwen35_4b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_grpo_1603_detection_correctness_severity_02502505"
   mlflow:
     experiment_name: "nemo-rl-vlm"
-    run_name: "grpo_sft_qwen35_4b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_0903_10k_detection_correctness_severity_02502505"
+    run_name: "grpo_sft_qwen35_4b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_grpo_1603_detection_correctness_severity_02502505"
   gpu_monitoring:
     collection_interval: 10
     flush_interval: 10
