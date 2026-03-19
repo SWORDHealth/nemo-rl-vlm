@@ -675,11 +675,15 @@ def get_formatted_message_log(
                     # Pass as list for proper batching by the video processor
                     videos_kwargs_dict["video_metadata"] = [video_metadata_from_content]
 
+                # IMPORTANT: Use add_generation_prompt when processing video messages
+                # This ensures the assistant prefix tokens are included, matching what
+                # happens for text-only messages in message_chunk
                 processed_chunk = tokenizer.apply_chat_template(
                     [message],
                     tokenize=True,
                     return_tensors="pt",
                     add_special_tokens=False,
+                    add_generation_prompt=template_kwargs["add_generation_prompt"],
                     return_dict=True,
                     videos_kwargs=videos_kwargs_dict,
                 )
@@ -718,15 +722,10 @@ def get_formatted_message_log(
         elif isinstance(content, str):
             new_message["content"] = message_chunk
         else:
-            # format the content list of new message the same way as the original message but replace the text with the new message chunk
-            new_message["content"] = []
-            for item in content:
-                if item["type"] == "text":
-                    new_message["content"].append(
-                        {"type": "text", "text": message_chunk}
-                    )
-                else:
-                    new_message["content"].append(item)
+            # For multimodal messages (video/image + text), preserve original content structure
+            # The token_ids field already contains the formatted/tokenized version
+            # Don't replace the text content with message_chunk (which has chat template formatting)
+            new_message["content"] = content  # Keep original content as-is
 
         new_message_log.append(new_message)
         prev_formatted_message = formatted_message
