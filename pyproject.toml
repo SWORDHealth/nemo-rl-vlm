@@ -23,7 +23,7 @@ dependencies = [
   "triton; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
   "colored==2.2.3",
   "ray[default]==2.49.2",
-  "transformers>=4.58.0",
+  "transformers>=5.3.0",
   "wandb>=0.25.0",
   "numpy<2.0.0",
   "datasets>=4.0.0",
@@ -46,7 +46,7 @@ dependencies = [
   "torchvision==0.25.0",
   "num2words>=0.5.14",                                                                                                # for SmolVLM
   "mlflow>=3.5.0,<3.6.0",
-  "nvidia-nvshmem-cu12; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')", # for deep_ep build
+  "nvidia-nvshmem-cu13; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')", # for deep_ep build
   "swanlab",
   "pyzmq",
   # Megatron backend dependencies (formerly in mcore extra)
@@ -54,22 +54,23 @@ dependencies = [
   # "transformer-engine-torch @ file:///home/pmartins/nemo-rl-vlm/wheels/transformer_engine_torch-2.8.0-cp312-cp312-linux_x86_64.whl",  # Disabled - wheel built for PyTorch 2.8.0, incompatible with 2.10.0
   "megatron-core",
   "megatron-bridge",
-  "flash-attn==2.8.1",
+  "flash-attn==2.8.3",
+  "nccl4py",
   # "deep_ep @ git+https://github.com/deepseek-ai/DeepEP.git@bfded34800dfec415b71503f8205181de90b2480",  # Commented out - has build issues, not used in nemo-rl-dev
 ]
 
 [project.optional-dependencies]
-fsdp = ["flash-attn==2.8.1", "mamba-ssm", "causal-conv1d"]
+fsdp = ["flash-attn==2.8.3", "mamba-ssm", "causal-conv1d"]
 automodel = [
   "nemo-automodel",
   # Flash-attn version should be selected to satisfy both TE + vLLM requirements (xformers in particular)
   # https://github.com/NVIDIA/TransformerEngine/blob/v2.3/transformer_engine/pytorch/attention/dot_product_attention/utils.py#L108
   # https://github.com/facebookresearch/xformers/blob/8354497deb2c04c67fbb2e2ad911e86530da0e90/xformers/ops/fmha/flash.py#L76
-  "flash-attn==2.8.1",
+  "flash-attn==2.8.3",
   "mamba-ssm",
   "causal-conv1d",
   "nv-grouped-gemm",
-  "transformer-engine[pytorch]==2.8.0",
+  "transformer-engine[pytorch]==2.12.0",
   "deep_ep @ git+https://github.com/deepseek-ai/DeepEP.git@bfded34800dfec415b71503f8205181de90b2480",
 ]
 vllm = [
@@ -82,6 +83,8 @@ vllm = [
   "deep_ep @ git+https://github.com/deepseek-ai/DeepEP.git@bfded34800dfec415b71503f8205181de90b2480",
   "vllm",
   "num2words>=0.5.14",
+  "nccl4py",
+  "cuda-bindings",
 ]
 sglang = [
   "sglang==0.5.7",
@@ -166,15 +169,15 @@ nemo_gym = { workspace = true }
 nemo_run = { git = "https://github.com/NVIDIA-NeMo/Run", rev = "414f0077c648fde2c71bb1186e97ccbf96d6844c" }
 # torch/torchvision/triton all come from the torch index in order to pick up aarch64 wheels
 torch = [
-  { index = "pytorch-cu129", marker = "sys_platform != 'darwin'" },
+  { index = "pytorch-cu130", marker = "sys_platform != 'darwin'" },
   { index = "pypi", marker = "sys_platform == 'darwin'" },
 ]
 torchvision = [
-  { index = "pytorch-cu129", marker = "sys_platform != 'darwin'" },
+  { index = "pytorch-cu130", marker = "sys_platform != 'darwin'" },
   { index = "pypi", marker = "sys_platform == 'darwin'" },
 ]
 triton = [
-  { index = "pytorch-cu129", marker = "sys_platform != 'darwin'" },
+  { index = "pytorch-cu130", marker = "sys_platform != 'darwin'" },
   { index = "pypi", marker = "sys_platform == 'darwin'" },
 ]
 causal-conv1d = { git = "https://github.com/Dao-AILab/causal-conv1d", rev = "67e0a9dfe1518fc0036444e9ab5fe06ab78299e0" }
@@ -182,7 +185,7 @@ mamba-ssm = { git = "https://github.com/state-spaces/mamba.git", rev = "d68d16ed
 nv-grouped-gemm = { git = "https://github.com/fanshiqing/grouped_gemm", tag = "v1.1.4.post7" }
 sgl-kernel = { git = "https://github.com/sgl-project/sglang", rev = "3167bcc01c3074d5739e8086757cd8c66077d508", subdirectory = "sgl-kernel" }
 vllm = { git = "https://github.com/vllm-project/vllm.git", rev = "a0c708169" }
-transformer-engine = { git = "https://github.com/NVIDIA/TransformerEngine.git", tag = "v2.8" }
+transformer-engine = { git = "https://github.com/NVIDIA/TransformerEngine.git", tag = "v2.12" }
 
 [tool.uv.workspace]
 members = [
@@ -204,8 +207,8 @@ url = "https://pypi.org/simple"
 explicit = true
 
 [[tool.uv.index]]
-name = "pytorch-cu129"
-url = "https://download.pytorch.org/whl/cu129"
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
 [tool.uv]
@@ -237,7 +240,7 @@ link-mode = "copy"
 # The timm override is needed because current automodel pins to 1.0.16. This can be removed once we move ToT automodel
 # The nvidia-modelopt override is needed because mcore is still on 0.33
 override-dependencies = [
-  # "transformer-engine[pytorch]==2.8.0",  # Removed - building from git source instead
+  # "transformer-engine[pytorch]==2.12.0",  # Removed - building from git source instead
   "opencv-python-headless>=4.11.0",
   "timm<=1.0.22",
   "nvidia-modelopt[torch]>=0.39.0",
@@ -251,7 +254,7 @@ override-dependencies = [
   # nvidia-resiliency-ext 0.5.0 doesn't have wheels for manylinux_2_35
   "nvidia-resiliency-ext==0.4.1",
   # Override nemo-automodel's transformers constraint for Qwen3.5 support
-  "transformers>=4.58.0",
+  "transformers>=5.3.0",
   # Override megatron-core's opentelemetry constraint to support protobuf 6.x (required by ray 2.49.2)
   "opentelemetry-api>=1.35.0",
   "opentelemetry-sdk>=1.35.0",
@@ -309,12 +312,12 @@ requires-dist = ["torch", "einops", "setuptools", "psutil", "ninja"]
 
 [[tool.uv.dependency-metadata]]
 name = "transformer-engine-torch"
-version = "2.8.0"
+version = "2.12.0"
 requires-dist = ["torch>=2.1", "einops", "onnxscript", "onnx"]
 
 [[tool.uv.dependency-metadata]]
 name = "transformer-engine"
-version = "2.8.0"
+version = "2.12.0"
 requires-dist = ["torch>=2.1", "einops", "setuptools", "packaging", "ninja", "pybind11", "nvidia-mathdx"]
 
 [[tool.uv.dependency-metadata]]
