@@ -95,16 +95,6 @@ def generate_responses(
 
     generated_texts = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
 
-    # DEBUG: Print generated outputs (only on first generation call)
-    if not hasattr(generate_responses, '_debug_printed'):
-        print("\n" + "="*80)
-        print("GENERATED OUTPUTS (first 2 samples for verification):")
-        for i, text in enumerate(generated_texts[:2]):
-            print(f"\n[Sample {i}] Generated text ({len(generated_ids[i])} tokens):")
-            print(f"{text}")
-        print("="*80 + "\n")
-        generate_responses._debug_printed = True
-
     # Append to message log
     for i, (text, input_length, total_length) in enumerate(
         zip(generated_texts, input_lengths, unpadded_sequence_lengths)
@@ -206,16 +196,6 @@ async def generate_responses_async(
         generated_ids.append(generated_part)
 
     generated_texts = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-
-    # DEBUG: Print generated outputs (only on first generation call)
-    if not hasattr(generate_responses, '_debug_printed'):
-        print("\n" + "="*80)
-        print("GENERATED OUTPUTS (first 2 samples for verification):")
-        for i, text in enumerate(generated_texts[:2]):
-            print(f"\n[Sample {i}] Generated text ({len(generated_ids[i])} tokens):")
-            print(f"{text}")
-        print("="*80 + "\n")
-        generate_responses._debug_printed = True
 
     # Append to message log
     for i, (text, input_length, total_length) in enumerate(
@@ -592,6 +572,7 @@ async def async_generate_response_for_sample_turn(
     tokenizer: TokenizerType,
     max_seq_len: int,
     greedy: bool = False,
+    vllm_multimodal_data: dict | None = None,
 ) -> tuple[list[dict], torch.Tensor, torch.Tensor, dict[str, float]]:
     """Generate a response for a single sample's turn using async generation.
 
@@ -602,6 +583,9 @@ async def async_generate_response_for_sample_turn(
         tokenizer: Tokenizer to use
         max_seq_len: Maximum sequence length
         greedy: Whether to use greedy decoding
+        vllm_multimodal_data: Optional dict with vLLM multimodal fields
+            (vllm_content, vllm_videos, vllm_video_metadata, vllm_images)
+            for a single sample. Values are NOT wrapped in lists yet.
 
     Returns:
         Tuple of (updated_message_log, generated_tokens, input_lengths, generation_metrics)
@@ -625,6 +609,16 @@ async def async_generate_response_for_sample_turn(
             "stop_strings": [sample_stop_strings],
         }
     )
+
+    # Add multimodal data from flat messages (pixel_values, image_grid_thw, etc.)
+    multimodal_data = flat_messages.get_multimodal_dict(as_tensors=False)
+    generation_input_data.update(multimodal_data)
+
+    # Add vLLM-specific multimodal fields (vllm_content, vllm_videos, etc.)
+    if vllm_multimodal_data:
+        for key, value in vllm_multimodal_data.items():
+            # Wrap single-sample values in lists for batch format
+            generation_input_data[key] = [value]
 
     # Create a dummy batch for generate_responses_async
     dummy_batch = BatchedDataDict[DatumSpec](
@@ -686,6 +680,13 @@ async def run_sample_multi_turn_rollout(
     current_stop_strings = initial_sample_state.get("stop_strings", None)
     task_name = initial_sample_state["task_name"]
 
+    # Extract VLM multimodal data for vLLM generation (only used in first turn)
+    vllm_multimodal_data = {
+        k: initial_sample_state.get(k)
+        for k in ("vllm_content", "vllm_images", "vllm_videos", "vllm_video_metadata")
+        if initial_sample_state.get(k) is not None
+    }
+
     # Sample-level metrics
     total_reward = 0.0
     turn_count = 0
@@ -723,6 +724,7 @@ async def run_sample_multi_turn_rollout(
                 tokenizer,
                 max_seq_len,
                 greedy=greedy,
+                vllm_multimodal_data=vllm_multimodal_data if vllm_multimodal_data else None,
             )
             current_message_log = updated_message_log
 
@@ -747,6 +749,17 @@ async def run_sample_multi_turn_rollout(
 
         except Exception as e:
             print(f"Error generating response for sample {sample_idx}: {e}")
+            # Append a dummy assistant message so the sample is structurally valid
+            # for downstream logprob/training (which expects an assistant response)
+            dummy_assistant = {
+                "role": "assistant",
+                "content": "",
+                "token_ids": torch.tensor([tokenizer.eos_token_id or 0], dtype=torch.long),
+                "generation_logprobs": torch.tensor([0.0]),
+            }
+            current_message_log.append(dummy_assistant)
+            # Mark as truncated so loss_multiplier will be zeroed (grpo.py:1711)
+            truncated = True
             break
 
         # Create single-sample batch for environment interaction
@@ -791,12 +804,14 @@ async def run_sample_multi_turn_rollout(
         env_token_count += len(tokenized_obs)
         token_count += len(tokenized_obs)
 
-        # Update sample state for next turn
+        # Always update extra_env_info from environment metadata (e.g. reward details)
+        if env_output.metadata[0] is not None:
+            current_extra_env_info = env_output.metadata[0]
+
+        # Update stop strings for next turn (only if continuing)
         if not terminated and not truncated:
             if env_output.next_stop_strings[0] is not None:
                 current_stop_strings = env_output.next_stop_strings[0]
-            if env_output.metadata[0] is not None:
-                current_extra_env_info = env_output.metadata[0]
 
     # Check if max turns reached
     if turn_count >= max_rollout_turns:
@@ -874,6 +889,11 @@ def run_async_multi_turn_rollout(
                 "task_name": input_batch["task_name"][i],
                 "stop_strings": input_batch.get("stop_strings", [None] * batch_size)[i],
                 "idx": input_batch.get("idx", list(range(batch_size)))[i],
+                # VLM multimodal data for vLLM generation
+                "vllm_content": input_batch["vllm_content"][i] if "vllm_content" in input_batch else None,
+                "vllm_images": input_batch["vllm_images"][i] if "vllm_images" in input_batch else None,
+                "vllm_videos": input_batch["vllm_videos"][i] if "vllm_videos" in input_batch else None,
+                "vllm_video_metadata": input_batch["vllm_video_metadata"][i] if "vllm_video_metadata" in input_batch else None,
             }
             sample_initial_states.append(sample_state)
 

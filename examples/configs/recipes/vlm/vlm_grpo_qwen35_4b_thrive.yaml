@@ -1,9 +1,9 @@
 grpo:
-  num_prompts_per_step: 16
-  num_generations_per_prompt: 16
+  num_prompts_per_step: 32
+  num_generations_per_prompt: 8
   max_rollout_turns: 1
   max_num_epochs: 1
-  max_num_steps: 1000000
+  max_num_steps: 155
   normalize_rewards: true
   use_leave_one_out_baseline: true
   val_period: 11500
@@ -27,8 +27,10 @@ grpo:
     target_min: 0.0
     target_max: 1.0
   async_grpo:
-    enabled: false
-    max_trajectory_age_steps: 1
+    enabled: true
+    max_trajectory_age_steps: 4
+    in_flight_weight_updates: true 
+    recompute_kv_cache_after_weight_updates: false
   seq_logprob_error_threshold: null
 
 loss_fn:
@@ -37,30 +39,30 @@ loss_fn:
   kl_input_clamp_value: 20.0
   kl_output_clamp_value: 10.0
   ratio_clip_min: 0.2
-  ratio_clip_max: 0.2
+  ratio_clip_max: 0.27
   ratio_clip_c: null
   use_on_policy_kl_approximation: false
-  use_importance_sampling_correction: false
+  use_importance_sampling_correction: true
   truncated_importance_sampling_ratio: null
   token_level_loss: true
   force_on_policy_ratio: false
 
 checkpointing:
   enabled: true
-  checkpoint_dir: "/mnt/data/pmartins/vlm_ckpts/grpo_sft_qwen35_4b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_grpo_1603_detection_correctness_severity_02502505"
+  checkpoint_dir: /mnt/data/pmartins/vlm_ckpts/grpo_sft_qwen35_4b_repetition_feedback_severity_2603_reasoning_repetition_feedback_severity_0903_exact_match_reasoning
   metric_name: "val:accuracy"
   higher_is_better: true
   keep_top_k: 3
-  save_period: 571
+  save_period: 155
   checkpoint_must_save_by: null
 
 policy:
-  model_name: /mnt/data/pmartins/vlm_ckpts/sft_qwen_35_4b_repetition_feedback_severity_0903_10k/step_625/hf/
+  model_name: /mnt/data/pmartins/vlm_ckpts/sft_qwen_35_4b_repetition_feedback_severity_2603_reasoning/step_903/hf/ #/mnt/data/pmartins/Qwen3.5-4B
   tokenizer:
     name: ${policy.model_name}
-  train_global_batch_size: 16
+  train_global_batch_size: 32
   train_micro_batch_size: 1
-  generation_batch_size: 16
+  generation_batch_size: 32
   logprob_batch_size: 4
   max_total_sequence_length: 32784
   precision: "bfloat16"
@@ -107,7 +109,7 @@ policy:
 
   generation:
     backend: vllm
-    max_new_tokens: 2048
+    max_new_tokens: 65536
     temperature: 1.0
     top_p: 1.0
     top_k: null
@@ -116,24 +118,28 @@ policy:
     tokenizer:
       name: ${policy.model_name}
     vllm_cfg:
-      async_engine: false
+      async_engine: true
       precision: ${policy.precision}
       kv_cache_dtype: "auto"
       tensor_parallel_size: 1
       pipeline_parallel_size: 1
       expert_parallel_size: 1
-      gpu_memory_utilization: 0.6
+      gpu_memory_utilization: 0.9
       max_model_len: ${policy.max_total_sequence_length}
       enforce_eager: false
       enable_expert_parallel: false
-      # VLMs require tokenizer to be initialized before generation
       skip_tokenizer_init: False
     vllm_kwargs:
+      attention_backend: "FLASH_ATTN"
       media_io_kwargs:
         video:
           num_frames: 2048
+      mm_processor_kwargs:
+        size:
+          longest_edge: 102000000
+          shortest_edge: 4096
     colocated:
-      enabled: true
+      enabled: false
       resources:
         gpus_per_node: 4
         num_nodes: 1
@@ -142,7 +148,6 @@ policy:
     enabled: true
     empty_unused_memory_level: 1
     activation_checkpointing: false
-    converter_type: "Qwen2ForCausalLM"
     tensor_model_parallel_size: 2
     expert_tensor_parallel_size: 1
     expert_model_parallel_size: 1
@@ -190,7 +195,7 @@ policy:
       weight_decay_incr_style: "constant"
       lr_decay_style: "constant"
       lr_decay_iters: 1000
-      lr_warmup_iters: 50
+      lr_warmup_iters: 0
       lr_warmup_init: 2.0e-08
 
     distributed_data_parallel_config:
@@ -207,7 +212,7 @@ data:
   max_input_seq_length: ${policy.max_total_sequence_length}
   train:
     dataset_name: "thrive-vlm"
-    dataset_path: /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_grpo_1603/train
+    dataset_path:  /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_0903_exact_match_reasoning/train
     env_name: "thrive-vlm"
     split: "train"
     shuffle: true
@@ -216,7 +221,7 @@ data:
     system_prompt_file: null
   validation:
     dataset_name: "thrive-vlm"
-    dataset_path: /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_grpo_1603/train
+    dataset_path:  /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_0903_exact_match_reasoning/train
     env_name: "thrive-vlm"
     split: "train"
     shuffle: false
@@ -227,19 +232,59 @@ data:
 env:
   thrive-vlm:
     num_workers: 8
-    # Reward mode: "vanilla", "vanilla_quadratic", "vanilla_sqrt", "weighted", "weighted_quadratic", "weighted_sqrt", "weighted_separate_norm", "weighted_separate_norm_quadratic", "weighted_separate_norm_sqrt", "two_stage", "two_stage_sqrt", "two_stage_weighted", "detection_correctness_severity", "detection_correctness_severity_quadratic", "detection_correctness_severity_sqrt"
-    reward_mode: "detection_correctness_severity"
-    # Weighted mode: per-error weights based on GT severity
-    # For weighted_separate_norm: non_error_weight for "GT no error" cases, error_weight for "GT has error" cases (separate normalization)
-    error_weight: 5.0      # Weight for errors with actual severity issues
-    non_error_weight: 1.0  # Weight for "no error" cases
-    # Detection-Correctness-Severity mode: three-component reward
+    # Reward mode: "detection_correctness_severity", "detection_correctness_severity_quadratic", "detection_correctness_severity_sqrt"
+    reward_mode: "detection_correctness_severity_multiplicative_format"
+    # Three-component reward weights
     detection_weight: 0.25      # Weight for per-field error detection (presence/absence)
     correctness_weight: 0.25    # Weight for exact match across all fields
-    severity_weight: 0.5       # Weight for distance-based severity accuracy
+    severity_weight: 0.25        # Weight for distance-based severity accuracy
+    format_weight: 0.25          # Weight for response format adherence
+    # Severity component: separate normalization weights
+    error_weight: 2.0           # Weight for errors with actual severity issues
+    non_error_weight: 1.0       # Weight for "no error" cases
+
+    # LLM Judge configuration
+    judge:
+      enabled: false
+      model_name: Qwen/Qwen3-4B-Thinking-2507
+      rubric_type: "repetition_analysis"
+      output_format: "json"
+      include_ground_truth: true
+      judge_weight: 0.5
+      batch_size: 4
+
+      generation:
+        backend: "vllm"
+        max_new_tokens: 2048
+        temperature: 0.0
+        top_p: 1.0
+        top_k: null
+        tokenizer:
+          name: ${env.thrive-vlm.judge.model_name}
+          chat_template_kwargs:
+            enable_thinking: true
+        vllm_cfg:
+          async_engine: false
+          tensor_parallel_size: 2
+          pipeline_parallel_size: 1
+          expert_parallel_size: 1
+          gpu_memory_utilization: 0.9
+          max_model_len: 8192
+          enforce_eager: false
+          precision: "bfloat16"
+          kv_cache_dtype: "auto"
+          load_format: "auto"
+          skip_tokenizer_init: false
+
+      colocated:
+        enabled: false
+        colocation_target: "generation"
+      resources:
+        gpus_per_node: 4
+        num_nodes: 1
 
 logger:
-  log_dir: "/home/pmartins/nemo-rl-vlm/logs_grpo/grpo_sft_qwen35_4b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_grpo_1603_detection_correctness_severity_02502505"
+  log_dir: "/mnt/data/pmartins/logs_grpo/grpo_sft_qwen35_4b_repetition_feedback_severity_2603_reasoning_repetition_feedback_severity_0903_exact_match_reasoning"
   wandb_enabled: false
   tensorboard_enabled: true
   mlflow_enabled: false
@@ -248,12 +293,12 @@ logger:
   num_val_samples_to_print: 0
   wandb:
     project: "nemo-rl-vlm"
-    name: "grpo_sft_qwen35_4b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_grpo_1603_detection_correctness_severity_02502505"
+    name: "grpo_sft_qwen35_4b_repetition_feedback_severity_2603_reasoning_repetition_feedback_severity_0903_exact_match_reasoning"
   tensorboard:
-    log_dir: "/home/pmartins/nemo-rl-vlm/logs_grpo/grpo_sft_qwen35_4b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_grpo_1603_detection_correctness_severity_02502505"
+    log_dir: /mnt/data/pmartinslogs_grpo/grpo_sft_qwen35_4b_repetition_feedback_severity_2603_reasoning_repetition_feedback_severity_0903_exact_match_reasoning"
   mlflow:
     experiment_name: "nemo-rl-vlm"
-    run_name: "grpo_sft_qwen35_4b_repetition_feedback_severity_0903_10k_repetition_feedback_severity_grpo_1603_detection_correctness_severity_02502505"
+    run_name: "grpo_sft_qwen35_4b_repetition_feedback_severity_2603_reasoning_repetition_feedback_severity_0903_exact_match_reasoning"
   gpu_monitoring:
     collection_interval: 10
     flush_interval: 10

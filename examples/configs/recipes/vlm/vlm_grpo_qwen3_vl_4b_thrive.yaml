@@ -127,9 +127,14 @@ policy:
       # VLMs require tokenizer to be initialized before generation
       skip_tokenizer_init: False
     vllm_kwargs:
+      attention_backend: "FLASH_ATTN"
       media_io_kwargs:
         video:
           num_frames: 2048
+      mm_processor_kwargs:
+        size:
+          longest_edge: 102000000
+          shortest_edge: 4096
     colocated:
       enabled: true
       resources:
@@ -225,14 +230,14 @@ data:
 env:
   thrive-vlm:
     num_workers: 8
-    # Reward mode: "vanilla", "vanilla_quadratic", "vanilla_sqrt", "weighted", "weighted_quadratic", "weighted_sqrt", "two_stage", "two_stage_sqrt", "two_stage_weighted"
-    reward_mode: "two_stage_weighted"
-    # Weighted mode: per-error weights based on GT severity
-    error_weight: 1.0      # errors with GT severity > 1 or movement < 6
-    non_error_weight: 0.5  # errors with GT severity = 1 or movement = 6
-    # Two-stage mode: weights for detection vs severity accuracy
-    detection_weight: 0.5   # weight for error detection accuracy
-    severity_weight: 0.5    # weight for severity score accuracy
+    # Reward mode: "detection_correctness_severity", "detection_correctness_severity_quadratic", "detection_correctness_severity_sqrt"
+    reward_mode: "detection_correctness_severity"
+    error_weight: 1.0
+    non_error_weight: 0.5
+    detection_weight: 0.25
+    correctness_weight: 0.25
+    severity_weight: 0.5
+    format_weight: 0.0
 
 logger:
   log_dir: "/home/pmartins/nemo-rl/logs/test"

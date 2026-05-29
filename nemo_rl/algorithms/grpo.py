@@ -2073,6 +2073,26 @@ def grpo_train(
                 ].tolist()
                 log_data["prev_logprobs"] = train_data["prev_logprobs"].tolist()
 
+                # Add sample IDs and reward details if available from extra_env_info
+                if "extra_env_info" in repeated_batch:
+                    env_infos = repeated_batch["extra_env_info"]
+                    log_data["sample_id"] = [
+                        info.get("sample_id", "") if isinstance(info, dict) else ""
+                        for info in env_infos
+                    ]
+                    # Add task type per sample for downstream dashboard consumption
+                    log_data["task_type"] = [
+                        info.get("task_type", "repetition") if isinstance(info, dict) else "repetition"
+                        for info in env_infos
+                    ]
+                    # Add intermediate reward component scores (full details per sample)
+                    reward_details = [
+                        info.get("reward_details", {}) if isinstance(info, dict) else {}
+                        for info in env_infos
+                    ]
+                    if any(reward_details):
+                        log_data["reward_details"] = reward_details
+
                 logger.log_batched_dict_as_jsonl(
                     log_data, f"train_data_step{total_steps + 1}.jsonl"
                 )
@@ -3009,6 +3029,13 @@ def async_grpo_train(
                 if master_config["checkpointing"]["enabled"] and (
                     should_save_by_step or should_save_by_timeout
                 ):
+                    # Pause trajectory collection to avoid GPU memory conflicts during checkpoint save
+                    trajectory_collector.pause.remote()
+                    ray.get(trajectory_collector.wait_for_pending_generations.remote())
+
+                    # Put vLLM to sleep to free GPU memory and stop async engine operations
+                    policy_generation.finish_generation()
+
                     policy.prepare_for_training()
 
                     grpo_save_state["current_step"] = step + 1
@@ -3074,13 +3101,41 @@ def async_grpo_train(
                             os.path.join(checkpoint_path, "train_dataloader.pt"),
                         )
                         checkpointer.finalize_checkpoint(checkpoint_path)
-                    policy.offload_after_refit()
+                    if colocated_inference:
+                        policy.offload_after_refit()
+
+                    # Wake vLLM back up after checkpoint
+                    policy_generation.prepare_for_generation()
+
+                    # Resume trajectory collection after checkpoint save
+                    trajectory_collector.resume.remote()
 
             log_data = {"content": flat_messages_content}
             log_data["rewards"] = rewards.tolist()
             log_data["generation_logprobs"] = train_data["generation_logprobs"].tolist()
             log_data["prev_logprobs"] = train_data["prev_logprobs"].tolist()
             log_data["input_lengths"] = input_lengths.tolist()
+
+            # Add sample IDs and reward details if available from extra_env_info
+            if "extra_env_info" in repeated_batch:
+                env_infos = repeated_batch["extra_env_info"]
+                log_data["sample_id"] = [
+                    info.get("sample_id", "") if isinstance(info, dict) else ""
+                    for info in env_infos
+                ]
+                # Add task type per sample for downstream dashboard consumption
+                log_data["task_type"] = [
+                    info.get("task_type", "repetition") if isinstance(info, dict) else "repetition"
+                    for info in env_infos
+                ]
+                # Add intermediate reward component scores (full details per sample)
+                reward_details = [
+                    info.get("reward_details", {}) if isinstance(info, dict) else {}
+                    for info in env_infos
+                ]
+                if any(reward_details):
+                    log_data["reward_details"] = reward_details
+
             logger.log_batched_dict_as_jsonl(
                 log_data, f"train_data_step{step + 1}.jsonl"
             )

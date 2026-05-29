@@ -13,11 +13,14 @@
 # limitations under the License.
 
 import json
+import logging
 from typing import Any, Optional
 
 from datasets import load_from_disk
 from PIL import Image, ImageOps
 from transformers.video_utils import VideoMetadata
+
+logger = logging.getLogger(__name__)
 
 from nemo_rl.data import ResponseDatasetConfig
 from nemo_rl.data.interfaces import TaskDataSpec
@@ -40,66 +43,113 @@ def format_thrive_vlm_grpo_dataset(
     Returns:
         Formatted message log dictionary with user question and assistant answer
     """
-    # Handle both "video" and "video_frames" field names
-    video_value = example.get("video") or example.get("video_frames")
+    # Determine if this is a comparison sample (two videos) or single-video sample
+    is_comparison = bool(example.get("video_frames_a")) and bool(example.get("video_frames_b"))
 
-    if video_value is None:
-        raise ValueError(
-            "Dataset example must contain either 'video' or 'video_frames' field"
-        )
-
-    # If video_value is a list of strings (frame paths), load them as PIL Images if return_pil=True
-    if isinstance(video_value, (list, tuple)) and len(video_value) > 0:
-        if isinstance(video_value[0], str) and return_pil:
-            # Load frame paths into PIL Images
-            video_value = [
-                Image.open(frame_path).convert("RGB") for frame_path in video_value
-            ]
-
-            # Apply horizontal flip if requested in dataset
-            if example.get("need_to_flip", False):
-                video_value = [ImageOps.mirror(frame) for frame in video_value]
-
-    video_content = {
-        "type": "video",
-        "video": video_value,  # Path, URL, or PIL frames
-    }
-
-    # Extract video metadata
+    # Extract fps (shared across all video types)
     if "fps" in example or "sample_fps" in example:
         fps_value = example.get("fps", example.get("sample_fps", 10.0))
         if isinstance(fps_value, str):
             fps_value = float(fps_value)
     else:
+        logger.warning("No fps found in example, defaulting to 10.0")
         fps_value = 10.0
 
-    if isinstance(video_value, (list, tuple)) and len(video_value) > 0:
-        # Get frame dimensions from first frame
-        first_frame = video_value[0]
+    def _load_video(frame_paths, apply_flip=False):
+        """Load video frames and optionally flip. Returns (frames, VideoMetadata content dict)."""
+        frames = frame_paths
+        if isinstance(frames, (list, tuple)) and len(frames) > 0 and isinstance(frames[0], str) and return_pil:
+            frames = [Image.open(p).convert("RGB") for p in frames]
+            if apply_flip:
+                frames = [ImageOps.mirror(f) for f in frames]
 
-        # Handle different frame types: PIL Image, tensor, or string path
-        if isinstance(first_frame, str):
-            # If it's a path, load it temporarily to get dimensions
-            temp_frame = Image.open(first_frame).convert("RGB")
-            width, height = temp_frame.size
-        elif hasattr(first_frame, "size"):  # PIL Image
-            width, height = first_frame.size
-        else:  # Tensor
-            height, width = first_frame.shape[-2:]
+        content = {"type": "video", "video": frames}
 
-        video_metadata = VideoMetadata(
-            total_num_frames=len(video_value),
-            fps=fps_value,
-            width=width,
-            height=height,
-            frames_indices=list(range(len(video_value))),
-        )
-        video_content["video_metadata"] = video_metadata
+        if isinstance(frames, (list, tuple)) and len(frames) > 0:
+            first_frame = frames[0]
+            if isinstance(first_frame, str):
+                temp_frame = Image.open(first_frame).convert("RGB")
+                w, h = temp_frame.size
+            elif hasattr(first_frame, "size"):
+                w, h = first_frame.size
+            else:
+                h, w = first_frame.shape[-2:]
+            content["video_metadata"] = VideoMetadata(
+                total_num_frames=len(frames), fps=fps_value,
+                width=w, height=h, frames_indices=list(range(len(frames))),
+            )
 
-    if "max_pixels" in example:
-        video_content["max_pixels"] = int(example["max_pixels"])
-    if "min_pixels" in example:
-        video_content["min_pixels"] = int(example["min_pixels"])
+        if "max_pixels" in example:
+            content["max_pixels"] = int(example["max_pixels"])
+        if "min_pixels" in example:
+            content["min_pixels"] = int(example["min_pixels"])
+
+        return frames, content
+
+    need_flip = example.get("need_to_flip", False)
+
+    # Blocklist: comparison samples that cause vLLM multi-video scheduling deadlocks
+    _COMPARISON_BLOCKLIST = {
+        "10023_60884082",
+        "12000_61267072",
+        "10015_57393662",
+        "15009_57983650|57983629",
+    }
+
+    # Check blocklist — blocked comparison samples become single-video with zero loss
+    # NOTE: Commented out to test if vLLM encoder_budget.py fix resolves the hang
+    _is_blocklisted = False
+    # if is_comparison:
+    #     _sid = example.get("session_id", "")
+    #     _eid = example.get("exercise_id", "")
+    #     _sample_key = f"{_eid}_{_sid}"
+    #     if _sample_key in _COMPARISON_BLOCKLIST:
+    #         _is_blocklisted = True
+    #         is_comparison = False
+    #         example["video_frames"] = example["video_frames_a"]
+    #         example["dataset_type"] = "repetition_severity"
+
+    if is_comparison:
+        # # Cap frames per video in comparison samples to avoid vLLM vision encoder OOM
+        # MAX_FRAMES_PER_COMPARISON_VIDEO = 64
+        #
+        # def _subsample(frame_paths, max_frames):
+        #     if len(frame_paths) <= max_frames:
+        #         return frame_paths
+        #     indices = [int(i * (len(frame_paths) - 1) / (max_frames - 1)) for i in range(max_frames)]
+        #     return [frame_paths[j] for j in indices]
+        #
+        # video_value_a = _subsample(example["video_frames_a"], MAX_FRAMES_PER_COMPARISON_VIDEO)
+        # video_value_b = _subsample(example["video_frames_b"], MAX_FRAMES_PER_COMPARISON_VIDEO)
+        video_value_a = example["video_frames_a"]
+        video_value_b = example["video_frames_b"]
+        _, video_content_a = _load_video(video_value_a, apply_flip=need_flip)
+        _, video_content_b = _load_video(video_value_b, apply_flip=need_flip)
+        video_contents = [video_content_a, video_content_b]
+        # Use video_frames_a for sample_id extraction fallback
+        video_value = video_value_a
+    else:
+        # Handle video, image, or text-only samples
+        video_value = example.get("video") or example.get("video_frames")
+
+        if video_value:
+            video_value, video_content = _load_video(video_value, apply_flip=need_flip)
+            video_contents = [video_content]
+        else:
+            # No video — check for image content
+            image_value = example.get("image") or example.get("images")
+            video_contents = []
+            video_value = None
+            if image_value:
+                if not isinstance(image_value, (list, tuple)):
+                    image_value = [image_value]
+                if len(image_value) > 0 and isinstance(image_value[0], str) and return_pil:
+                    image_value = [Image.open(p).convert("RGB") for p in image_value]
+                    if need_flip:
+                        image_value = [ImageOps.mirror(f) for f in image_value]
+                for img in image_value:
+                    video_contents.append({"type": "image", "image": img})
+            # Text-only samples: video_contents stays empty
 
     # Extract question text and answer from messages structure or direct fields
     # Dataset format: messages[0] = system prompt, messages[1] = user question, messages[2] = assistant answer (GT)
@@ -143,9 +193,8 @@ def format_thrive_vlm_grpo_dataset(
     if system_prompt:
         result_messages.append({"role": "system", "content": system_prompt})
 
-    # Add user question with video
-    user_content = [
-        video_content,
+    # Add user question with video(s)
+    user_content = video_contents + [
         {
             "type": "text",
             "text": str(question_text),
@@ -160,22 +209,51 @@ def format_thrive_vlm_grpo_dataset(
     })
 
     # Detect task type per-sample so mixed datasets work transparently.
-    # Full-exercise analysis samples have Q1-Q9 ratings keys; per-rep samples do not.
-    ratings = example.get("ratings", {})
-    if isinstance(ratings, dict) and "q1_consistency" in ratings:
+    # Primary: check dataset_type field (e.g. "full_exercise", "repetition_severity").
+    # Aux types pass through as-is. Fallback: check ratings metadata for Q1-Q9 keys.
+    _AUX_DATASET_TYPES = {
+        "video_mcqa", "image_mcqa", "phase_sequencing_mcqa",
+        "muscle_exercise_mcqa", "error_correction_mcqa", "error_recognition",
+        "exercise_name_identification", "keypoint_prediction", "keypoint_labeling",
+    }
+    dataset_type = example.get("dataset_type", "")
+    if dataset_type == "comparison":
+        task_type = "comparison"
+    elif dataset_type == "full_exercise":
+        task_type = "full_exercise"
+    elif dataset_type in _AUX_DATASET_TYPES:
+        task_type = dataset_type
+    elif isinstance(example.get("ratings"), dict) and "q1_consistency" in example["ratings"]:
         task_type = "full_exercise"
     else:
         task_type = "repetition"
+
+    # Extract sample identifier from frame paths or dataset fields
+    sample_id = ""
+    if "session_id" in example:
+        sample_id = f"{example.get('exercise_id', '')}_{example.get('session_id', '')}"
+    elif isinstance(video_value, (list, tuple)) and len(video_value) > 0 and isinstance(video_value[0], str):
+        # Extract folder name from frame path
+        import os
+        sample_id = os.path.basename(os.path.dirname(os.path.dirname(video_value[0])))
+
+    extra_env_info = {
+        "ground_truth": assistant_content,
+        "task_type": task_type,
+        "sample_id": sample_id,
+    }
+    if task_type == "comparison":
+        extra_env_info["expected_verdict"] = example.get("expected_verdict", "")
 
     ret = {
         "messages": result_messages,
         "task_name": "thrive-vlm",
         "task_type": task_type,
-        "extra_env_info": {
-            "ground_truth": assistant_content,
-            "task_type": task_type,
-        },
+        "extra_env_info": extra_env_info,
     }
+
+    if _is_blocklisted:
+        ret["_skip"] = True
 
     return ret
 

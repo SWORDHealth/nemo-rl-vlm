@@ -3,7 +3,7 @@ defaults: ../../sft.yaml
 sft:
   max_num_epochs: 1
   max_num_steps: 1000000
-  val_period: 100
+  val_period: 100000
   val_batches: 8
   val_global_batch_size: 32
   val_micro_batch_size: 1
@@ -12,20 +12,22 @@ sft:
 
 checkpointing:
   enabled: true
-  checkpoint_dir: "/mnt/data/pmartins/vlm_ckpts/sft_qwen3_vl_8b_thrive_merged_rep_2302_10k_diverse_full_exercise_feedback_0202_text_video_aux_tasks_1102_image_aux_tasks_mixed_b_lr_5e-6"
+  checkpoint_dir: "/mnt/data/pmartins/vlm_ckpts/sft_qwen3_vl_8b_repetition_feedback_severity_2603_10k"
   metric_name: "val:val_loss"
   higher_is_better: false
   keep_top_k: 3
-  save_period: 1666
+  save_period: 312
   checkpoint_must_save_by: null
 
 policy:
   model_name: "Qwen/Qwen3-VL-8B-Instruct"
   tokenizer:
     name: ${policy.model_name}
-  train_global_batch_size: 16
+    chat_template_kwargs:
+      enable_thinking: false
+  train_global_batch_size: 32
   train_micro_batch_size: 1
-  max_total_sequence_length: 65536
+  max_total_sequence_length: 16384
   precision: "bfloat16"
 
   offload_optimizer_for_logprob: false
@@ -52,7 +54,7 @@ policy:
     empty_unused_memory_level: 1
     activation_checkpointing: false
     converter_type: "Qwen2ForCausalLM"
-    tensor_model_parallel_size: 8
+    tensor_model_parallel_size: 2
     expert_tensor_parallel_size: 1
     expert_model_parallel_size: 1
     pipeline_model_parallel_size: 1
@@ -67,10 +69,13 @@ policy:
     moe_router_bias_update_rate: 0.0
     moe_permute_fusion: false
     moe_token_dispatcher_type: "allgather"
+    moe_enable_deepep: false
+    moe_shared_expert_overlap: false
     moe_grouped_gemm: true
     moe_per_layer_logging: false
-    apply_rope_fusion: false  # Required: Qwen3-VL uses MRoPE which is incompatible with RoPE fusion
+    apply_rope_fusion: false
     bias_activation_fusion: true
+    attention_backend: "flash"
     defer_fp32_logits: false
 
     optimizer:
@@ -96,8 +101,8 @@ policy:
       end_weight_decay: ${policy.megatron_cfg.optimizer.weight_decay}
       weight_decay_incr_style: "constant"
       lr_decay_style: "cosine"
-      lr_decay_iters: 1666
-      lr_warmup_iters: 166
+      lr_decay_iters: 312
+      lr_warmup_iters: 31
       lr_warmup_init: 0
 
     distributed_data_parallel_config:
@@ -120,22 +125,20 @@ data:
   num_workers: 8
   seed: 42
 
-
   train:
     dataset_name: thrive-vlm-sft
-    data_path: /mnt/data/shared/vlm/data/merged_rep_2302_10k_diverse_full_exercise_feedback_0202_text_video_aux_tasks_1102_image_aux_tasks_mixed_b/
+    data_path: /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_2603_10k/train
     split: train
   validation:
     dataset_name: thrive-vlm-sft
-    data_path: /mnt/data/shared/vlm/data/merged_rep_2302_10k_diverse_full_exercise_feedback_0202_text_video_aux_tasks_1102_image_aux_tasks_mixed_b/
+    data_path: /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_2603_10k/train
     split: validation
   default:
     prompt_file: null
-    processor: "vlm_hf_data_processor"
-      roles_to_train_on: ["assistant"]
+    roles_to_train_on: ["assistant"]
 
 logger:
-  log_dir: "logs/sft_qwen3_vl_8b_thrive_merged_rep_2302_10k_diverse_full_exercise_feedback_0202_text_video_aux_tasks_1102_image_aux_tasks_mixed_b_lr_5e-6"
+  log_dir: "logs/sft_qwen3_vl_8b_repetition_feedback_severity_2603_10k"
   wandb_enabled: false
   tensorboard_enabled: true
   mlflow_enabled: false
@@ -143,13 +146,13 @@ logger:
   monitor_gpus: true
   num_val_samples_to_print: 0
   wandb:
-    project: "nemo-rl"
-    name: "sft_qwen3_vl_8b_thrive_merged_rep_2302_10k_diverse_full_exercise_feedback_0202_text_video_aux_tasks_1102_image_aux_tasks_mixed_b_lr_5e-6"
+    project: "nemo-rl-vlm"
+    name: "sft_qwen3_vl_8b_repetition_feedback_severity_2603_10k"
   tensorboard:
-    log_dir: "logs/sft_qwen3_vl_8b_thrive_merged_rep_2302_10k_diverse_full_exercise_feedback_0202_text_video_aux_tasks_1102_image_aux_tasks_mixed_b_lr_5e-6"
+    log_dir: "logs/sft_qwen3_vl_8b_repetition_feedback_severity_2603_10k"
   mlflow:
-    experiment_name: "nemo-rl"
-    run_name: "sft_qwen3_vl_8b_thrive_merged_rep_2302_10k_diverse_full_exercise_feedback_0202_text_video_aux_tasks_1102_image_aux_tasks_mixed_b_lr_5e-6"
+    experiment_name: "nemo-rl-vlm"
+    run_name: "sft_qwen3_vl_8b_repetition_feedback_severity_2603_10k"
   gpu_monitoring:
     collection_interval: 10
     flush_interval: 10

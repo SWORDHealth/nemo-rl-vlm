@@ -33,58 +33,64 @@ def format_thrive_vlm_dataset(
     # Collect multimodal content
     multimodal_content = []
 
-    # Handle video content (check both "video" and "video_frames" field names)
-    video_value = example.get("video") or example.get("video_frames")
+    # Extract fps (shared across all video types)
+    if "fps" in example or "sample_fps" in example:
+        fps_value = example.get("fps", example.get("sample_fps", 10.0))
+        if isinstance(fps_value, str):
+            fps_value = float(fps_value)
+    else:
+        fps_value = 10.0
 
-    if video_value is not None:
-        # If video_value is a list of strings (frame paths), load them as PIL Images
-        if isinstance(video_value, (list, tuple)) and len(video_value) > 0:
-            if isinstance(video_value[0], str):
-                # Load frame paths into PIL Images
-                video_value = [Image.open(frame_path).convert("RGB") for frame_path in video_value]
+    need_flip = example.get("need_to_flip", False)
 
-                # Apply horizontal flip if requested in dataset
-                if example.get("need_to_flip", False):
-                    video_value = [ImageOps.mirror(frame) for frame in video_value]
+    def _build_video_content(frame_paths):
+        """Load video frames and build video content dict with metadata."""
+        frames = frame_paths
+        if isinstance(frames, (list, tuple)) and len(frames) > 0 and isinstance(frames[0], str):
+            frames = [Image.open(p).convert("RGB") for p in frames]
+            if need_flip:
+                frames = [ImageOps.mirror(f) for f in frames]
 
-        video_content = {
-            "type": "video",
-            "video": video_value,  # Path, URL, or PIL frames - no encoding needed
-        }
+        content = {"type": "video", "video": frames}
 
-        # Add video metadata
-        if example.get('fps') is None and 'dataset_type' in example:
-            print(example['dataset_type'])
-        if "fps" in example or "sample_fps" in example:
-            fps_value = example.get("fps", example.get("sample_fps", 10.0))
-            if isinstance(fps_value, str):
-                fps_value = float(fps_value)
-        else:
-            fps_value = 10.0
-
-        if isinstance(video_value, (list, tuple)) and len(video_value) > 0:
-            # Get frame dimensions from first frame
-            first_frame = video_value[0]
-            if hasattr(first_frame, 'size'):  # PIL Image
-                width, height = first_frame.size
+        if isinstance(frames, (list, tuple)) and len(frames) > 0:
+            first_frame = frames[0]
+            if hasattr(first_frame, 'size'):
+                w, h = first_frame.size
             else:
-                height, width = first_frame.shape[-2:]
-
-            video_metadata = VideoMetadata(
-                total_num_frames=len(video_value),
-                fps=fps_value,
-                width=width,
-                height=height,
-                frames_indices=list(range(len(video_value))),  # All frames, in order
+                h, w = first_frame.shape[-2:]
+            content["video_metadata"] = VideoMetadata(
+                total_num_frames=len(frames), fps=fps_value,
+                width=w, height=h, frames_indices=list(range(len(frames))),
             )
-            video_content["video_metadata"] = video_metadata
 
         if "max_pixels" in example:
-            video_content["max_pixels"] = int(example["max_pixels"])
+            content["max_pixels"] = int(example["max_pixels"])
         if "min_pixels" in example:
-            video_content["min_pixels"] = int(example["min_pixels"])
+            content["min_pixels"] = int(example["min_pixels"])
 
-        multimodal_content.append(video_content)
+        return content
+
+    # Handle comparison samples (two videos: video_frames_a + video_frames_b)
+    if example.get("video_frames_a") and example.get("video_frames_b"):
+        # # Cap frames per video in comparison samples to avoid vision encoder OOM
+        # MAX_FRAMES_PER_COMPARISON_VIDEO = 64
+        #
+        # def _subsample(frame_paths, max_frames):
+        #     if len(frame_paths) <= max_frames:
+        #         return frame_paths
+        #     indices = [int(i * (len(frame_paths) - 1) / (max_frames - 1)) for i in range(max_frames)]
+        #     return [frame_paths[j] for j in indices]
+        #
+        # multimodal_content.append(_build_video_content(_subsample(example["video_frames_a"], MAX_FRAMES_PER_COMPARISON_VIDEO)))
+        # multimodal_content.append(_build_video_content(_subsample(example["video_frames_b"], MAX_FRAMES_PER_COMPARISON_VIDEO)))
+        multimodal_content.append(_build_video_content(example["video_frames_a"]))
+        multimodal_content.append(_build_video_content(example["video_frames_b"]))
+
+    # Handle single video content (check both "video" and "video_frames" field names)
+    elif example.get("video") or example.get("video_frames"):
+        video_value = example.get("video") or example.get("video_frames")
+        multimodal_content.append(_build_video_content(video_value))
 
     # Handle image content (check both "image" and "images" field names) if no video
     else:

@@ -12,7 +12,7 @@
 #SBATCH --error=slurm_logs/nemo-rl-grpo-qwen35-4b-thrive-%j.err
 
 # Create a script that will be executed on each node via srun (in shared location)
-cat > /home/pmartins/nemo-rl-vlm/examples/configs/recipes/vlm/slurm_multinode_worker_grpo_qwen35_4b_thrive.sh << 'WORKER_SCRIPT_EOF'
+cat > /home/pmartins/nemo-rl-vlm/examples/configs/recipes/vlm/slurm/slurm_multinode_worker_grpo_qwen35_4b_thrive.sh << 'WORKER_SCRIPT_EOF'
 #!/bin/bash
 
 # 1. SET UP DISTRIBUTED ENVIRONMENT VARIABLES FOR SLURM
@@ -99,6 +99,8 @@ export RAY_gcs_rpc_server_reconnect_timeout_s=120
 export RAY_TIMEOUT_MS=300000  # 5 minutes
 export RAY_REDIS_START_RETRIES=20
 
+export NRL_VLLM_ASYNC_TIMEOUT_SECONDS=12000
+
 # 4. START RAY CLUSTER
 echo "Starting Ray cluster setup on node $NODE_RANK with $GPUS_PER_NODE GPUs. Master is at $MASTER_ADDR:$MASTER_PORT."
 
@@ -161,7 +163,7 @@ fi
 WORKER_SCRIPT_EOF
 
 # Make the worker script executable
-chmod +x /home/pmartins/nemo-rl-vlm/examples/configs/recipes/vlm/slurm_multinode_worker_grpo_qwen35_4b_thrive.sh
+chmod +x /home/pmartins/nemo-rl-vlm/examples/configs/recipes/vlm/slurm/slurm_multinode_worker_grpo_qwen35_4b_thrive.sh
 
 echo "=== Starting Single-Node SLURM Job ==="
 echo "Job ID: $SLURM_JOB_ID"
@@ -169,6 +171,6 @@ echo "Nodes: $SLURM_JOB_NUM_NODES"
 echo "Node list: $SLURM_JOB_NODELIST"
 
 # Launch the worker script on all nodes simultaneously using srun
-srun --ntasks-per-node=1 /home/pmartins/nemo-rl-vlm/examples/configs/recipes/vlm/slurm_multinode_worker_grpo_qwen35_4b_thrive.sh
+srun --ntasks-per-node=1 /home/pmartins/nemo-rl-vlm/examples/configs/recipes/vlm/slurm/slurm_multinode_worker_grpo_qwen35_4b_thrive.sh
 
 echo "=== Single-Node Job Completed ==="

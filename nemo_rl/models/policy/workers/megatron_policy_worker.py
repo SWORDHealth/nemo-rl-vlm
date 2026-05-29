@@ -341,6 +341,26 @@ class MegatronPolicyWorker(AbstractPolicyWorker, ColocatablePolicyInterface):
                         straggler_timer=self.mcore_state.straggler_timer,
                     )
 
+                # Log attention backend on first step
+                if not hasattr(self, '_logged_attn_backend'):
+                    self._logged_attn_backend = True
+                    try:
+                        from transformer_engine.pytorch.attention.dot_product_attention.dot_product_attention import _attention_backends
+                        from transformer_engine.pytorch.attention.dot_product_attention.utils import FlashAttentionUtils as _FAU
+                        from transformer_engine.pytorch.utils import get_device_compute_capability
+                        print(f"[TE-DIAG] compute_capability={get_device_compute_capability()}, "
+                              f"FA.is_installed={_FAU.is_installed}, "
+                              f"FA.v3_is_installed={_FAU.v3_is_installed}, "
+                              f"FA.version={_FAU.version}")
+                        print(f"[TE-DIAG] Attention backend: "
+                              f"flash={_attention_backends.get('use_flash_attention')}, "
+                              f"fused={_attention_backends.get('use_fused_attention')}, "
+                              f"unfused={_attention_backends.get('use_unfused_attention')}, "
+                              f"fused_backend={_attention_backends.get('fused_attention_backend')}, "
+                              f"flash_backend={_attention_backends.get('flash_attention_backend')}")
+                    except Exception as e:
+                        print(f"[TE-DIAG] Could not determine attention backend: {e}")
+
                 # Empty unused memory.
                 if self.cfg["megatron_cfg"]["empty_unused_memory_level"] >= 1:
                     torch.cuda.empty_cache()

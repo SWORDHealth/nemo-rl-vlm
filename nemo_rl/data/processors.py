@@ -236,22 +236,22 @@ def grpo_processor(
 
         datum_dict = format_thrive_vlm_grpo_dataset(datum_dict, return_pil=True)
 
-        # Extract videos and metadata for vLLM generation
+        # Extract videos and metadata for vLLM generation.
+        # Each video's frames are kept as a separate entry (supports multi-video samples).
         for message in datum_dict.get("messages", []):
-            videos_in_msg = get_videos_from_message(message)
-            if len(videos_in_msg) > 0:
-                videos.extend(videos_in_msg)
-                # Extract metadata from message content
-                if isinstance(message.get("content"), list):
-                    for item in message["content"]:
-                        if item.get("type") == "video" and "video_metadata" in item:
-                            metadata = item["video_metadata"]
-                            # Convert VideoMetadata dataclass to dict if needed
-                            if hasattr(metadata, "__dict__"):
-                                metadata_dict = metadata.__dict__
-                            else:
-                                metadata_dict = metadata
-                            video_metadata_list.append(metadata_dict)
+            if isinstance(message.get("content"), list):
+                for item in message["content"]:
+                    if isinstance(item, dict) and item.get("type") == "video":
+                        video_frames = item.get("video")
+                        # Skip empty videos or videos without metadata
+                        if not video_frames or "video_metadata" not in item:
+                            continue
+                        videos.append(
+                            list(video_frames) if isinstance(video_frames, (list, tuple)) else video_frames
+                        )
+                        metadata = item["video_metadata"]
+                        metadata_dict = dict(metadata.__dict__) if hasattr(metadata, "__dict__") else dict(metadata)
+                        video_metadata_list.append(metadata_dict)
 
     # Filter messages for GRPO: only system and user roles (NO assistant)
     # This ensures the model generates the response, not copies ground truth
@@ -284,20 +284,49 @@ def grpo_processor(
             ]
         loss_multiplier = 0.0
 
-    # Create vLLM fields for thrive-vlm tasks
+    # Skip blocklisted samples (e.g. comparison samples that hang vLLM)
+    if datum_dict.get("_skip"):
+        loss_multiplier = 0.0
+
+    # Create vLLM fields for thrive-vlm tasks with multimodal content
     vllm_kwargs = {}
-    if datum_dict.get("task_name") == "thrive-vlm" and len(videos) > 0:
-        # Create vllm_content using filtered messages
-        vllm_content = tokenizer.apply_chat_template(
-            filtered_messages,
-            tokenize=False,
-            add_generation_prompt=True,  # Always add generation prompt for GRPO
-        )
-        vllm_kwargs = {
-            "vllm_content": vllm_content,
-            "vllm_videos": videos,
-            "vllm_video_metadata": video_metadata_list,
-        }
+    if datum_dict.get("task_name") == "thrive-vlm":
+        # Check if there's any multimodal content (video or image)
+        has_videos = len(videos) > 0
+        images = []
+        if not has_videos:
+            # Extract images from message content
+            for message in datum_dict.get("messages", []):
+                if isinstance(message.get("content"), list):
+                    for item in message["content"]:
+                        if isinstance(item, dict) and item.get("type") == "image":
+                            images.append(item["image"])
+
+        if has_videos or images:
+            vllm_content = tokenizer.apply_chat_template(
+                filtered_messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+            vllm_kwargs = {
+                "vllm_content": vllm_content,
+                "vllm_videos": videos,
+                "vllm_video_metadata": video_metadata_list,
+                "vllm_images": images,
+            }
+        elif any(isinstance(msg.get("content"), list) for msg in datum_dict.get("messages", [])):
+            # Text-only with list content — still need vllm_content for proper tokenization
+            vllm_content = tokenizer.apply_chat_template(
+                filtered_messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+            vllm_kwargs = {
+                "vllm_content": vllm_content,
+                "vllm_videos": [],
+                "vllm_video_metadata": [],
+                "vllm_images": [],
+            }
 
     output: DatumSpec = {
         "message_log": message_log,

@@ -12,18 +12,18 @@ sft:
 
 checkpointing:
   enabled: true
-  checkpoint_dir: "/mnt/data/pmartins/vlm_ckpts/sft_qwen35_35b_a3b_thrive"
+  checkpoint_dir: "/mnt/data/pmartins/vlm_ckpts/sft_qwen_35_35b_a3b_repetition_feedback_severity_2603_reasoning_no_description_variation"
   metric_name: "val:val_loss"
   higher_is_better: false
   keep_top_k: 3
-  save_period: 1390
+  save_period: 903
   checkpoint_must_save_by: null
 
 policy:
   model_name: /mnt/data/shared/models/Qwen3.5-35B-A3B/
   tokenizer:
     name: ${policy.model_name}
-  train_global_batch_size: 16
+  train_global_batch_size: 32
   train_micro_batch_size: 1
   max_total_sequence_length: 32768 #65536
   precision: "bfloat16"
@@ -51,11 +51,11 @@ policy:
     enabled: true
     empty_unused_memory_level: 1
     activation_checkpointing: true
-    converter_type: "Qwen2ForCausalLM"
+    converter_type: "Qwen3MoeForCausalLM"
     tensor_model_parallel_size: 1
     expert_tensor_parallel_size: 1
-    expert_model_parallel_size: 8
-    pipeline_model_parallel_size: 4
+    expert_model_parallel_size: 4
+    pipeline_model_parallel_size: 1
     sequence_parallel: false
     context_parallel_size: 1
     pipeline_dtype: ${policy.precision}
@@ -65,12 +65,13 @@ policy:
     moe_router_dtype: "fp64"
     moe_router_load_balancing_type: "none"
     moe_router_bias_update_rate: 0.0
-    moe_permute_fusion: true  # Enable for 20% speedup and better memory efficiency
-    moe_token_dispatcher_type: "allgather"
+    moe_permute_fusion: false  
+    moe_token_dispatcher_type: "alltoall"
     moe_grouped_gemm: true
     moe_per_layer_logging: false
-    apply_rope_fusion: false  # Required: Qwen3.5 uses MRoPE which is incompatible with RoPE fusion
+    apply_rope_fusion: false
     bias_activation_fusion: true
+    attention_backend: "flash"
     defer_fp32_logits: false
 
     optimizer:
@@ -96,8 +97,8 @@ policy:
       end_weight_decay: ${policy.megatron_cfg.optimizer.weight_decay}
       weight_decay_incr_style: "constant"
       lr_decay_style: "cosine"
-      lr_decay_iters: 1390
-      lr_warmup_iters: 166
+      lr_decay_iters: 903
+      lr_warmup_iters: 90
       lr_warmup_init: 0
 
     distributed_data_parallel_config:
@@ -122,11 +123,11 @@ data:
 
   train:
     dataset_name: thrive-vlm-sft
-    data_path: /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_10k_2601/train
+    data_path: /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_2603_reasoning_no_description_variation/train
     split: train
   validation:
     dataset_name: thrive-vlm-sft
-    data_path: /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_10k_2601/train
+    data_path: /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_2603_reasoning_no_description_variation/train
     split: validation
   default:
     prompt_file: null
@@ -134,7 +135,7 @@ data:
     roles_to_train_on: ["assistant"]
 
 logger:
-  log_dir: "logs/sft_qwen35_35b_a3b_thrive"
+  log_dir: "logs/sft_qwen_35_35b_a3b_repetition_feedback_severity_2603_reasoning_no_description_variation"
   wandb_enabled: false
   tensorboard_enabled: true
   mlflow_enabled: false
@@ -142,13 +143,13 @@ logger:
   monitor_gpus: true
   num_val_samples_to_print: 0
   wandb:
-    project: "nemo-rl"
-    name: "sft_qwen35_35b_a3b_thrive"
+    project: "nemo-rl-vlm"
+    name: "sft_qwen_35_35b_a3b_repetition_feedback_severity_2603_reasoning_no_description_variation"
   tensorboard:
-    log_dir: "logs/sft_qwen35_35b_a3b_thrive"
+    log_dir: "logs/sft_qwen_35_35b_a3b_repetition_feedback_severity_2603_reasoning_no_description_variation"
   mlflow:
-    experiment_name: "nemo-rl"
-    run_name: "sft_qwen35_35b_a3b_thrive"
+    experiment_name: "nemo-rl-vlm"
+    run_name: "sft_qwen_35_35b_a3b_repetition_feedback_severity_2603_reasoning_no_description_variation"
   gpu_monitoring:
     collection_interval: 10
     flush_interval: 10

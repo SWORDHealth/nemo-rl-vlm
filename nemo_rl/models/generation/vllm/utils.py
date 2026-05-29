@@ -58,6 +58,10 @@ def format_prompt_for_vllm_generation(
     # if 'message_log' in data and any('images' in msg for msg in data['message_log']):
     if "vllm_content" in data:
         # VLM generation using content and multi_modal_data
+        images = data.get("vllm_images", None)
+        videos = data.get("vllm_videos", None)
+        video_metadata_list = data.get("vllm_video_metadata", None)
+
         for i in range(start_idx, end_idx):
             msg = data["vllm_content"][i]
             # if msg is None, this conversation had no multimodal content, fallback to regular prompt
@@ -66,11 +70,6 @@ def format_prompt_for_vllm_generation(
                 continue
             # init prompt dict
             prompt_dict = {"prompt": msg}
-
-            # add additional data if present
-            images = data.get("vllm_images", None)
-            videos = data.get("vllm_videos", None)
-            video_metadata_list = data.get("vllm_video_metadata", None)
 
             # If no multimodal data at all, fallback to regular prompt
             if (images is None or len(images[i]) == 0) and (videos is None or len(videos[i]) == 0):
@@ -82,11 +81,13 @@ def format_prompt_for_vllm_generation(
             if images is not None and len(images[i]) > 0:
                 multi_modal_data["image"] = images[i][0] if len(images[i]) == 1 else images[i]
             if videos is not None and len(videos[i]) > 0:
-                # Videos should be a list of frames
-                # vLLM expects video data as a tuple: (frames, metadata_dict)
-                # Qwen3-VL requires metadata (video_needs_metadata=True)
-                if video_metadata_list is None or i >= len(video_metadata_list) or video_metadata_list[i] is None:
-                    # Debug: print available keys
+                # videos[i] is a list of per-video frame lists (supports multi-video).
+                # vLLM expects: single video → (frames, metadata_dict)
+                #               multi video → [(frames, metadata_dict), ...]
+                per_sample_videos = videos[i]
+                per_sample_meta = video_metadata_list[i] if video_metadata_list is not None and i < len(video_metadata_list) else None
+
+                if per_sample_meta is None:
                     import warnings
                     warnings.warn(
                         f"Video metadata missing for batch item {i}. "
@@ -98,10 +99,20 @@ def format_prompt_for_vllm_generation(
                         f"Video metadata is required for Qwen3-VL but not provided for batch item {i}. "
                         f"video_metadata_list: {video_metadata_list}"
                     )
-                # Extract metadata dict from list (each item is [metadata_dict])
-                metadata = video_metadata_list[i][0] if isinstance(video_metadata_list[i], list) else video_metadata_list[i]
 
-                multi_modal_data["video"] = (videos[i], metadata)
+                # Normalize metadata to a list matching per_sample_videos
+                if not isinstance(per_sample_meta, list):
+                    per_sample_meta = [per_sample_meta]
+
+                if len(per_sample_videos) == 1:
+                    # Single video: tuple of (frames, metadata_dict)
+                    multi_modal_data["video"] = (per_sample_videos[0], per_sample_meta[0])
+                else:
+                    # Multiple videos: list of (frames, metadata_dict) tuples
+                    multi_modal_data["video"] = [
+                        (frames, meta)
+                        for frames, meta in zip(per_sample_videos, per_sample_meta)
+                    ]
 
             if multi_modal_data:
                 prompt_dict["multi_modal_data"] = multi_modal_data

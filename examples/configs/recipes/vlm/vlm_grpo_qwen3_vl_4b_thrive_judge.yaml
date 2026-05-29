@@ -127,9 +127,14 @@ policy:
       # VLMs require tokenizer to be initialized before generation
       skip_tokenizer_init: False
     vllm_kwargs:
+      attention_backend: "FLASH_ATTN"
       media_io_kwargs:
         video:
           num_frames: 2048
+      mm_processor_kwargs:
+        size:
+          longest_edge: 102000000
+          shortest_edge: 4096
     colocated:
       enabled: true
       resources:
@@ -223,12 +228,14 @@ data:
 env:
   thrive-vlm:
     num_workers: 8
-    # Reward mode: rule-based verification method
-    reward_mode: "two_stage_weighted"
+    # Reward mode: "detection_correctness_severity", "detection_correctness_severity_quadratic", "detection_correctness_severity_sqrt"
+    reward_mode: "detection_correctness_severity"
     error_weight: 1.0
     non_error_weight: 0.5
-    detection_weight: 0.5
+    detection_weight: 0.25
+    correctness_weight: 0.25
     severity_weight: 0.5
+    format_weight: 0.0
 
     # LLM Judge configuration
     judge:

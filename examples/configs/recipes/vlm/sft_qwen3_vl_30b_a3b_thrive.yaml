@@ -71,6 +71,7 @@ policy:
     moe_per_layer_logging: false
     apply_rope_fusion: false  # Required: Qwen3-VL uses MRoPE which is incompatible with RoPE fusion
     bias_activation_fusion: true
+    attention_backend: "flash"
     defer_fp32_logits: false
 
     optimizer:

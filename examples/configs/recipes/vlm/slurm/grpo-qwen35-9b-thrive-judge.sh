@@ -99,6 +99,8 @@ export RAY_gcs_rpc_server_reconnect_timeout_s=120
 export RAY_TIMEOUT_MS=300000  # 5 minutes
 export RAY_REDIS_START_RETRIES=20
 
+export NRL_VLLM_ASYNC_TIMEOUT_SECONDS=12000
+
 # 4. START RAY CLUSTER
 echo "Starting Ray cluster setup on node $NODE_RANK with $GPUS_PER_NODE GPUs. Master is at $MASTER_ADDR:$MASTER_PORT."
 

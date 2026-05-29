@@ -52,7 +52,7 @@ export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 
 # --- NCCL DEBUGGING (IMPROVED) ---
 # Create a dedicated directory for NCCL logs inside your main slurm_logs
-# NCCL_LOG_DIR="/home/pmartins/nemo-rl-vlm/examples/configs/recipes/vlm/slurm/logs/nccl_logs_${SLURM_JOB_ID}"
+# NCCL_LOG_DIR="/home/pmartins/nemo-rl-vlm/slurm_logs/nccl_logs_${SLURM_JOB_ID}"
 # mkdir -p "$NCCL_LOG_DIR"
 
 # Set NCCL debug level and specify a UNIQUE, ABSOLUTE path for the log file
@@ -112,7 +112,7 @@ if [ "$NODE_RANK" -eq 0 ]; then
     echo "=== Starting NeMo RL VLM SFT Training ==="
 
     # Create a detailed log with timestamps and node info
-    LOG_DIR="/home/pmartins/nemo-rl-vlm/examples/configs/recipes/vlm/slurm/logs/$(date +%Y%m%d)"
+    LOG_DIR="/home/pmartins/nemo-rl-vlm/slurm_logs/$(date +%Y%m%d)"
     mkdir -p "$LOG_DIR"
     LOG_FILE="$LOG_DIR/training_qwen35_9b_thrive_node_${NODE_RANK}_$(date +%H%M%S).log"
 

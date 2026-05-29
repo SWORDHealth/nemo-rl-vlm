@@ -129,9 +129,14 @@ policy:
       # VLMs require tokenizer to be initialized before generation
       skip_tokenizer_init: False
     vllm_kwargs:
+      attention_backend: "FLASH_ATTN"
       media_io_kwargs:
         video:
           num_frames: 2048
+      mm_processor_kwargs:
+        size:
+          longest_edge: 102000000
+          shortest_edge: 4096
     colocated:
       enabled: true
       resources:
@@ -227,15 +232,14 @@ data:
 env:
   thrive-vlm:
     num_workers: 8
-    # Reward mode: "vanilla", "vanilla_quadratic", "vanilla_sqrt", "weighted", "weighted_quadratic", "weighted_sqrt", "weighted_fp_aware", "weighted_fp_aware_quadratic", "weighted_fp_aware_sqrt", "two_stage", "two_stage_sqrt", "two_stage_weighted"
-    reward_mode: "weighted_fp_aware"
-    # Weighted mode: per-error weights based on GT severity
-    # For weighted_fp_aware: non_error_weight applies to FP penalty, error_weight applies to actual error distance
-    error_weight: 5.0      # Weight for non_1_dist (errors with actual severity issues)
-    non_error_weight: 1.0  # Weight for FP_penalty (false positive penalties)
-    # Two-stage mode: weights for detection vs severity accuracy
-    detection_weight: 0.5   # weight for error detection accuracy
-    severity_weight: 0.5    # weight for severity score accuracy
+    # Reward mode: "detection_correctness_severity", "detection_correctness_severity_quadratic", "detection_correctness_severity_sqrt"
+    reward_mode: "detection_correctness_severity"
+    error_weight: 5.0
+    non_error_weight: 1.0
+    detection_weight: 0.25
+    correctness_weight: 0.25
+    severity_weight: 0.5
+    format_weight: 0.0
 
     # LLM Judge configuration
     judge:

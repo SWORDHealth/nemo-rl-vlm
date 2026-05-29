@@ -1,7 +1,7 @@
 defaults: ../../sft.yaml
 
 sft:
-  max_num_epochs: 1
+  max_num_epochs: 3
   max_num_steps: 1000000
   val_period: 100000
   val_batches: 8
@@ -12,11 +12,11 @@ sft:
 
 checkpointing:
   enabled: true
-  checkpoint_dir: "/mnt/data/pmartins/vlm_ckpts/sft_qwen_35_4b_repetition_feedback_severity_0903_10k_"
+  checkpoint_dir: "/mnt/data/pmartins/vlm_ckpts/sft_qwen_35_4b_repetition_feedback_severity_visual_obs_cat_2704_5k_reasoning_3epochs"
   metric_name: "val:val_loss"
   higher_is_better: false
   keep_top_k: 3
-  save_period: 625 #1521
+  save_period: 156
   checkpoint_must_save_by: null
 
 policy:
@@ -25,9 +25,9 @@ policy:
     name: ${policy.model_name}
     chat_template_kwargs:
       enable_thinking: false
-  train_global_batch_size: 16
+  train_global_batch_size: 32
   train_micro_batch_size: 1
-  max_total_sequence_length: 32784
+  max_total_sequence_length: 32768
   precision: "bfloat16"
 
   offload_optimizer_for_logprob: false
@@ -53,8 +53,7 @@ policy:
     enabled: true
     empty_unused_memory_level: 1
     activation_checkpointing: false
-    converter_type: "Qwen2ForCausalLM"
-    tensor_model_parallel_size: 2
+    tensor_model_parallel_size: 1
     expert_tensor_parallel_size: 1
     expert_model_parallel_size: 1
     pipeline_model_parallel_size: 1
@@ -75,6 +74,7 @@ policy:
     moe_per_layer_logging: false
     apply_rope_fusion: false
     bias_activation_fusion: true
+    attention_backend: "flash"
     defer_fp32_logits: false
 
     optimizer:
@@ -100,8 +100,8 @@ policy:
       end_weight_decay: ${policy.megatron_cfg.optimizer.weight_decay}
       weight_decay_incr_style: "constant"
       lr_decay_style: "cosine"
-      lr_decay_iters: 625 #1521
-      lr_warmup_iters: 62
+      lr_decay_iters: 468
+      lr_warmup_iters: 46
       lr_warmup_init: 0
 
     distributed_data_parallel_config:
@@ -126,18 +126,18 @@ data:
 
   train:
     dataset_name: thrive-vlm-sft
-    data_path: /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_0903_10k/train
+    data_path: /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_visual_obs_cat_2704_5k_reasoning/train
     split: train
   validation:
     dataset_name: thrive-vlm-sft
-    data_path: /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_0903_10k/train
+    data_path: /mnt/data/shared/vlm/data/main_datasets/repetition_feedback_severity_visual_obs_cat_2704_5k_reasoning/train
     split: validation
   default:
     prompt_file: null
     roles_to_train_on: ["assistant"]
 
 logger:
-  log_dir: "logs/sft_qwen_35_4b_repetition_feedback_severity_0903_10k"
+  log_dir: "logs/sft_qwen_35_4b_repetition_feedback_severity_visual_obs_cat_2704_5k_reasoning_3epochs"
   wandb_enabled: false
   tensorboard_enabled: true
   mlflow_enabled: false
@@ -145,13 +145,13 @@ logger:
   monitor_gpus: true
   num_val_samples_to_print: 0
   wandb:
-    project: "nemo-rl"
-    name: "sft_qwen_35_4b_repetition_feedback_severity_0903_10k"
+    project: "nemo-rl-vlm"
+    name: "sft_qwen_35_4b_repetition_feedback_severity_visual_obs_cat_2704_5k_reasoning_3epochs"
   tensorboard:
-    log_dir: "logs/sft_qwen_35_4b_repetition_feedback_severity_0903_10k"
+    log_dir: "logs/sft_qwen_35_4b_repetition_feedback_severity_visual_obs_cat_2704_5k_reasoning_3epochs"
   mlflow:
-    experiment_name: "nemo-rl"
-    run_name: "sft_qwen_35_4b_repetition_feedback_severity_0903_10k"
+    experiment_name: "nemo-rl-vlm"
+    run_name: "sft_qwen_35_4b_repetition_feedback_severity_visual_obs_cat_2704_5k_reasoning_3epochs"
   gpu_monitoring:
     collection_interval: 10
     flush_interval: 10

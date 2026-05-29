@@ -361,8 +361,12 @@ def batched_message_log_to_flat_message(
     for key in all_keys:
         values = [seq.get(key) for seq in sequenced_lists]
         # if the values are PackedTensors, create a new PackedTensor from the list of values
-        if values and isinstance(values[0], PackedTensor):
-            result[key] = PackedTensor.flattened_concat(values)
+        packed_values = [v for v in values if isinstance(v, PackedTensor)]
+        if packed_values:
+            dim_to_pack = packed_values[0].dim_to_pack
+            # Use as_tensor() for PackedTensors, None for text-only samples
+            tensors = [v.as_tensor() if isinstance(v, PackedTensor) else None for v in values]
+            result[key] = PackedTensor(tensors, dim_to_pack)
             continue
         if not values or not isinstance(values[0], Tensor):
             result[key] = values
@@ -659,21 +663,21 @@ def get_formatted_message_log(
             )["input_ids"][0]
         else:
             if len(videos_cur_message) > 0 and hasattr(tokenizer, 'apply_chat_template'):
-                video_metadata_from_content = None
+                # Collect metadata from ALL video content items (supports multi-video)
+                video_metadata_from_content = []
                 for item in message.get("content", []):
                     if isinstance(item, dict) and item.get("type") == "video":
-                        video_metadata_from_content = item.get("video_metadata")
-                        if video_metadata_from_content is not None:
-                            break
-
+                        meta = item.get("video_metadata")
+                        if meta is not None:
+                            video_metadata_from_content.append(meta)
 
                 # Build videos_kwargs with metadata
                 videos_kwargs_dict = {
                     "do_sample_frames": False,
+                    "size": {"longest_edge": 102_000_000, "shortest_edge": 4_096},
                 }
-                if video_metadata_from_content is not None:
-                    # Pass as list for proper batching by the video processor
-                    videos_kwargs_dict["video_metadata"] = [video_metadata_from_content]
+                if video_metadata_from_content:
+                    videos_kwargs_dict["video_metadata"] = video_metadata_from_content
 
                 # IMPORTANT: Use add_generation_prompt when processing video messages
                 # This ensures the assistant prefix tokens are included, matching what

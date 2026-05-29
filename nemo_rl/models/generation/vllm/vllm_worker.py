@@ -466,6 +466,16 @@ class BaseVllmGenerationWorker:
             # Set disable_log_stats=False so that self.llm.get_metrics() works.
             disable_log_stats=False,
             logprobs_mode="processed_logprobs",
+            # Allow multiple media items per prompt (needed for comparison task with 2 videos)
+            limit_mm_per_prompt={"video": 2, "image": 4},
+            # Skip multi-modal memory profiling so vLLM allocates vision encoder memory
+            # dynamically. Without this, vLLM profiles with a single small video and
+            # permanently defers requests with larger/multiple videos.
+            #skip_mm_profiling=True,
+            # Limit concurrent sequences to prevent scheduler congestion with multi-modal
+            #max_num_seqs=32,
+            # Disable MM processor cache to avoid multi-video scheduling issues
+            #mm_processor_cache_gb=0,
             **vllm_kwargs,
         )
 

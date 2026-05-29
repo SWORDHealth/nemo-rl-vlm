@@ -3,7 +3,7 @@
 # 1 node with 8 GPUs
 
 #SBATCH --job-name=nemo-rl-sft-qwen35-9b-thrive
-#SBATCH --nodes=1
+#SBATCH --nodes=3
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:8
 #SBATCH --cpus-per-task=128

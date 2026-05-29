@@ -469,6 +469,19 @@ def _apply_performance_config(model_cfg: Any, config: PolicyConfig) -> None:
                 "Refer to https://github.com/NVIDIA-NeMo/RL/issues/1164 for latest updates with this issue."
             )
 
+    # Attention backend configuration
+    attention_backend = config["megatron_cfg"].get("attention_backend")
+    if attention_backend is not None:
+        from megatron.core.transformer.enums import AttnBackend
+
+        try:
+            model_cfg.attention_backend = AttnBackend[attention_backend]
+        except KeyError:
+            raise ValueError(
+                f"Invalid attention backend: {attention_backend}. "
+                f"Available backends are: {list(AttnBackend.__members__.keys())}"
+            )
+
 
 def _validate_optimizer_config(config: PolicyConfig) -> None:
     """Validate optimizer configuration."""
